@@ -1,0 +1,18 @@
+{
+	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
+	"type": "connection",
+	"id": "rdl-nvc2",
+	"name": "RDL D-NVC2",
+	"shortname": "RDL NVC2",
+	"description": "Volume, mute and live attenuation feedback for RDL D-NVC2",
+	"version": "0.0.0",
+	"license": "MIT",
+	"repository": "https://github.com/ukiews/companion-module-rdl-nvc2",
+	"bugs": "https://github.com/ukiews/companion-module-rdl-nvc2/issues",
+	"maintainers": [{ "name": "ukiews" }],
+	"runtime": { "type": "node22", "api": "nodejs-ipc", "apiVersion": "0.0.0", "entrypoint": "../src/main.js" },
+	"legacyIds": [],
+	"manufacturer": "Radio Design Labs",
+	"products": ["D-NVC2", "DB-NVC2", "DS-NVC2"],
+	"keywords": ["RDL", "Dante", "AES67", "volume", "attenuation", "mute"]
+}

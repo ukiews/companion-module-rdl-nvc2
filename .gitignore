@@ -1,0 +1,5 @@
+node_modules/
+pkg/
+*.tgz
+*.log
+live-results.json
