@@ -4,7 +4,7 @@ Control an RDL D-NVC2 over its control network: independent or linked output att
 
 ## Install
 
-Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-0.1.1.tgz` from this repository's release, open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. For an existing connection, select module version 0.1.1 after importing. This is a custom module; it is not yet in the Bitfocus module catalog.
+Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-1.0.0.tgz` from the [initial release](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/v1.0.0), open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. For an existing connection, select module version 1.0.0 after importing. This is a custom module; it is not yet in the Bitfocus module catalog.
 
 On a computer with several network interfaces, select the IPv4 address of the local interface connected to the device. Leaving the interface blank joins multicast on every available IPv4 interface. The device address and local interface address are different settings.
 
@@ -30,7 +30,7 @@ The **Select saved RDL Config profile** action and four presets select Config 1�
 
 Config selection uses binary RDL V2 zone set `0x0500` with a zero-based profile byte. Current Config is read using V2 zone get `0x0501`; the corresponding responses are `0x8500` and `0x8501`. These commands were identified from the installed RDL Console and checked on firmware 0.1.27. Every change is verified by a separate current-Config query. Selecting the current Config is a no-op because the firmware may omit a redundant setter acknowledgment. The module polls the current Config at startup and with each level poll, so profile buttons also follow changes made elsewhere. Failed profile queries clear profile feedback without disabling working volume control.
 
-**Upgrade from 0.1.0:** that version incorrectly used `DISP0`–`DISP3`, which select display/menu modes and do not select Config profiles. Its acknowledgment-only profile validation was insufficient. Version 0.1.1 replaces those commands and adds real device readback. Existing profile action IDs, option values, presets, feedback IDs, and `last_confirmed_profile` remain compatible.
+Display/menu commands `DISP0`–`DISP3` do not select Config profiles. The module uses V2 Config commands and independently queries actual state. Existing development-build profile actions, option values, presets, feedback IDs, and `last_confirmed_profile` remain compatible.
 
 ## Variables
 
