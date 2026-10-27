@@ -27,11 +27,9 @@ const context = {
 }
 const instance = new Instance(context)
 const host = process.argv[2]
-const originalProfile = Number(process.argv[4])
+let originalProfile
 let originalLevels
 try {
-	if (host && ![1, 2, 3, 4].includes(originalProfile))
-		throw new Error('Supply DEVICE_IP LOCAL_INTERFACE_IP ORIGINAL_CONFIG to enable live testing')
 	await instance.init({ host: host || '', localAddress: process.argv[3] || '', pollMs: 500 })
 	assert.ok(result.actions.profile)
 	assert.equal(Object.keys(result.presets).length, 13)
@@ -41,9 +39,12 @@ try {
 		while (!result.values.connected && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100))
 		assert.equal(result.values.connected, 1, 'Bundled module must connect and publish levels')
 		originalLevels = [result.values.ch1_attenuation, result.values.ch2_attenuation]
+		originalProfile = (await instance.client.serial(() => instance.client.queryProfile())).profile
 		for (const profile of [1, 2, 3, 4]) {
 			await result.actions.profile.callback({ options: { profile } })
 			assert.equal(result.values.last_confirmed_profile, profile)
+			assert.equal(result.values.active_profile, profile)
+			assert.equal((await instance.client.serial(() => instance.client.queryProfile())).profile, profile)
 			assert.equal(result.feedbacks.profile.callback({ options: { profile } }), true)
 		}
 		await result.actions.adjust.callback({ options: { channel: '0', value: -1 } })
@@ -52,7 +53,7 @@ try {
 			originalLevels[0] >= 64 ? originalLevels[0] : Math.min(63, originalLevels[0] + 1),
 		)
 		assert.equal(result.values.ch2_attenuation, originalLevels[1])
-		console.log('Bundled live connection, actions, profile acknowledgments and feedback passed')
+		console.log('Bundled live connection, actions, independent active profile queries and feedback passed')
 	}
 	console.log('Bundled Companion module smoke test passed')
 } finally {

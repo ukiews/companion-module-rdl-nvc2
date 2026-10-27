@@ -6,7 +6,7 @@ Use Presets for volume up/down, mute toggle, and Config 1–4 selection. A = Out
 
 Mute restore remembers each channel's previous level only while the connection is running. After a restart, explicitly set a level if a channel is already muted. Volume up/down does not unmute. A Both toggle mutes both when either is unmuted, and restores both when both are muted.
 
-Config selection chooses an existing RDL Console knob/channel configuration, not a volume scene. Configure profiles in RDL Console. Profile buttons and `last_confirmed_profile` track the latest received selection acknowledgment, starting unknown after startup/reconnection. The current profile cannot be queried with the supplied protocol. Volume control and polling work independently of the selected knob profile.
+Config selection chooses an existing RDL Console knob/channel configuration, not a volume scene. Configure profiles in RDL Console. Version 0.1.1 uses binary V2 Config set/get, verifies each selection with an independent device query, and polls the current Config. Profile buttons and `active_profile` show actual queried state; `last_confirmed_profile` remains as a compatibility alias. Version 0.1.0's incorrect display/menu commands have been removed. Existing buttons retain their action IDs and options.
 
 The module polls actual output levels for physical knob changes. Disconnected level values are blank/Unknown. Both-channel presets display channel A; use individual presets to see different A/B levels.
 

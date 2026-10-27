@@ -88,7 +88,7 @@ class Nvc2Instance extends InstanceBase {
 					this.connected = true
 					this.updateStatus(InstanceStatus.Ok)
 				}
-				if (response.type === 'profile') this.profile = response.profile
+				if (response.type === 'profile' && response.source === 'query') this.profile = response.profile
 				this.publish()
 			})
 			client.on('warning', (message) => this.log('warn', message))
@@ -115,6 +115,13 @@ class Nvc2Instance extends InstanceBase {
 							}
 						}
 						await client.queryLevels()
+						try {
+							await client.queryProfile()
+						} catch (error) {
+							this.profile = null
+							this.publish()
+							this.log('debug', error.message)
+						}
 					})
 				} catch (error) {
 					if (generation !== this.generation) return
@@ -140,6 +147,7 @@ class Nvc2Instance extends InstanceBase {
 			model: this.model,
 			firmware: this.firmware,
 			last_confirmed_profile: this.connected ? (this.profile ?? '') : '',
+			active_profile: this.connected ? (this.profile ?? '') : '',
 		}
 		for (let i = 0; i < 2; i++) {
 			const level = this.connected ? this.levels[i] : null
@@ -152,7 +160,7 @@ class Nvc2Instance extends InstanceBase {
 		this.checkFeedbacks('muted', 'level', 'connected', 'profile')
 	}
 	defineControls() {
-		const variables = ['connected', 'model', 'firmware', 'last_confirmed_profile']
+		const variables = ['connected', 'model', 'firmware', 'active_profile', 'last_confirmed_profile']
 		for (let i = 1; i <= 2; i++) variables.push(`ch${i}_attenuation`, `ch${i}_db`, `ch${i}_muted`, `ch${i}_display`)
 		this.setVariableDefinitions(
 			Object.fromEntries(variables.map((variableId) => [variableId, { name: variableId.replaceAll('_', ' ') }])),
@@ -194,7 +202,10 @@ class Nvc2Instance extends InstanceBase {
 			options: [],
 			callback: async () => {
 				try {
-					await this.client?.serial(() => this.client.queryLevels())
+					await this.client?.serial(async () => {
+						await this.client.queryLevels()
+						await this.client.queryProfile()
+					})
 				} catch (error) {
 					this.log('error', error.message)
 				}
@@ -250,7 +261,7 @@ class Nvc2Instance extends InstanceBase {
 			},
 			profile: {
 				type: 'boolean',
-				name: 'Last confirmed Config profile (unknown until selection observed)',
+				name: 'Active Config profile (device readback)',
 				defaultStyle: { color: WHITE, bgcolor: combineRgb(0, 80, 160) },
 				options: [profileOption()],
 				callback: (event) => this.connected && this.profile === Number(event.options.profile),

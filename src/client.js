@@ -2,7 +2,7 @@ const dgram = require('node:dgram')
 const { EventEmitter } = require('node:events')
 const { networkInterfaces } = require('node:os')
 const { isIPv4 } = require('node:net')
-const { parseResponse } = require('./protocol')
+const { parseResponses, buildV2 } = require('./protocol')
 
 class RdlClient extends EventEmitter {
 	constructor({ host, group = '239.254.50.0', port = 9000, localAddress = '', timeout = 1500 }) {
@@ -22,11 +22,11 @@ class RdlClient extends EventEmitter {
 		this.socket = dgram.createSocket({ type: 'udp4', reuseAddr: true })
 		this.socket.on('message', (data, remote) => {
 			if (remote.address !== this.host) return
-			const response = parseResponse(data)
-			if (!response) return
-			this.emit('response', response)
-			for (const pending of [...this.pending]) {
-				if (pending.match(response)) pending.finish(null, response)
+			for (const response of parseResponses(data)) {
+				this.emit('response', response)
+				for (const pending of [...this.pending]) {
+					if (pending.match(response)) pending.finish(null, response)
+				}
 			}
 		})
 		this.socket.on('error', (error) => {
@@ -74,6 +74,9 @@ class RdlClient extends EventEmitter {
 		})
 	}
 	attempt(command, match) {
+		const description = Buffer.isBuffer(command)
+			? `V2 0x${command.readUInt16BE(20).toString(16).padStart(4, '0')}`
+			: command
 		return new Promise((resolve, reject) => {
 			const pending = {
 				match: (r) => (r.type === 'nak' && r.command === command) || match(r),
@@ -81,11 +84,11 @@ class RdlClient extends EventEmitter {
 					if (!this.pending.delete(pending)) return
 					clearTimeout(timer)
 					if (error) reject(error)
-					else if (response.type === 'nak') reject(new Error(`Device rejected ${command}`))
+					else if (response.type === 'nak') reject(new Error(`Device rejected ${description}`))
 					else resolve(response)
 				},
 			}
-			const timer = setTimeout(() => pending.finish(new Error(`Timeout waiting for ${command}`)), this.timeout)
+			const timer = setTimeout(() => pending.finish(new Error(`Timeout waiting for ${description}`)), this.timeout)
 			this.pending.add(pending)
 			this.socket.send(Buffer.from(command, 'ascii'), 18700, this.host, (error) => {
 				if (error) pending.finish(error)
@@ -105,6 +108,9 @@ class RdlClient extends EventEmitter {
 	}
 	queryCapabilities() {
 		return this.request('QC', (r) => r.type === 'capabilities')
+	}
+	queryProfile() {
+		return this.request(buildV2(0x0501), (r) => r.type === 'profile' && r.source === 'query')
 	}
 	close() {
 		this.closed = true

@@ -1,21 +1,34 @@
 # Hardware validation
 
-Date: October 27, 2026. Device: RDL D-NVC2, firmware 0.1.27, two inputs and two outputs. Performed on the user's idle device. No test audio or listening measurement was used; volume and mute checks below confirm control acknowledgments and queried numeric state.
+Date: October 27, 2026. Device: RDL D-NVC2, firmware 0.1.27, two inputs and two outputs. Performed on the user's idle device. Volume and mute checks confirm control acknowledgments and queried numeric state; no audio measurements were performed.
 
-Initial readback: attenuation 31 dB on A and B. Console showed Config 1 selected, named Combined; Config 2 Mixer (A), Config 3 GMeet (B), and Config 4 UNUSED (no channels) were enabled.
+## Corrected profile validation in 0.1.1
 
-Passed:
+Version 0.1.0 incorrectly treated ACKDISP0 through ACKDISP3 as Config selection confirmation. Those commands control display/menu modes. The prior acknowledgment-only profile results are withdrawn; they did not demonstrate a Config change.
+
+The installed RDL Console implementation identifies binary V2 zone set 0x0500 and zone get 0x0501 as Config selection and readback. Corrected validation passed:
+
+- Queried the initial active Config using 0x0501 before making changes.
+- Selected Configs 2, 3, 4 and 1 using 0x0500 with zero-based binary indices. A separate 0x0501 query returned each requested profile.
+- RDL Console's system log recognized the queried active Config from the device.
+- The user physically verified that the knob displayed Mixer after selecting Config 2 with the corrected command, rather than opening the menu.
+- Selecting an already-active Config returns its queried state without issuing a redundant setter. Lost setter acknowledgments are accepted only if a subsequent query confirms the desired Config.
+- The rebuilt 0.1.1 package was loaded under Node 22 with the real Companion API 2 context. Its Config 1-4 action callbacks, separate active-Config queries, variables, profile feedback, and volume action passed against the device.
+- Final state after the rebuilt package test: Config 1, queried attenuation 33 dB on both channels, preserving the levels present before this correction.
+- All 22 offline tests, manifest validation, and bundled package smoke test passed locally. Tests include captured binary responses, malformed/truncated frames, multiple frames, ignoring display ACKs, and rejection of setter ACKs without matching readback.
+
+The saved Configs at commissioning were Combined (A+B), Mixer (A), GMeet (B), and UNUSED (no channels), all enabled. Profile definitions were not modified.
+
+## Volume validation from initial commissioning
+
+Passed on the same firmware:
 
 - Capabilities identify D-NVC2 firmware 0.1.27, CHI2O2.
 - Set both outputs, set A independently, and set B independently.
-- Louder and quieter relative adjustments preserve A/B differences.
-- Mute A, leave A muted during relative adjustment, restore A.
-- Mute both and restore their distinct previous levels.
-- Toggle both to mute and back to the original distinct levels.
-- Attenuation 63 reads as 63; mute 64 reads as 64 on each output.
-- Config selection sequence 1, 2, 3, 4, 2, 3, 1: received matching device acknowledgments for each.
-- Config selection in the installed RDL Console UI was exercised for Configs 2 and 3. Config 2's multicast response matched `ACKDISP1`.
-- Final queried attenuation restored to 31 dB on both outputs. Final Config 1 command acknowledged.
-- The production package was loaded under Node 22 with the real Companion API 2 context. Its connection, published variables, volume action, Config 1–4 action callbacks, profile feedback, and final restore passed against the live device. The 16 offline tests and manifest validation also passed.
+- Louder/quieter relative adjustments preserve A/B differences.
+- Mute A, preserve mute during relative adjustment, and restore A.
+- Mute/restore both outputs with distinct previous levels; linked toggle in both directions.
+- Attenuation 63 and mute 64 report distinct numeric states on each output.
+- Original commissioning levels of 31 dB on both outputs were restored at that time.
 
-Limits: Config tests verify command acceptance, not the physical knob's LCD or behavior under rotation. The Console UI caches its radio selection and does not reliably reflect commands sent by another controller. `QDISP` and `QU` return NAK on this firmware. No reliable current-Config query is known. The source protocol documents cover additional models; gain, phantom, mixer, routing, and RU-NMP44 preset commands are intentionally not exposed for this device.
+Gain, phantom, mixer, routing, and RU-NMP44 preset commands are not exposed for this device. Other hardware and firmware versions require commissioning.

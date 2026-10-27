@@ -4,7 +4,7 @@ Control an RDL D-NVC2 over its control network: independent or linked output att
 
 ## Install
 
-Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-0.1.0.tgz` from this repository's release, open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. This is a custom module; it is not yet in the Bitfocus module catalog.
+Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-0.1.1.tgz` from this repository's release, open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. For an existing connection, select module version 0.1.1 after importing. This is a custom module; it is not yet in the Bitfocus module catalog.
 
 On a computer with several network interfaces, select the IPv4 address of the local interface connected to the device. Leaving the interface blank joins multicast on every available IPv4 interface. The device address and local interface address are different settings.
 
@@ -28,7 +28,9 @@ Only replies whose source IPv4 matches the configured device are processed. Shar
 
 The **Select saved RDL Config profile** action and four presets select Config 1–4 already stored in RDL Console. These are the knob's saved channel configurations; this action does not create or modify profiles or store/recall a pair of volume values. Configure names, channel assignments, and enable flags in RDL Console.
 
-The observed Console command is `DISP0` through `DISP3` (zero-based ASCII), with `ACKDISP0` through `ACKDISP3` replies. This extension is absent from the supplied RN protocol document; all four selection acknowledgments were checked on D-NVC2 firmware 0.1.27. Other firmware versions require commissioning. No current-profile query is known (`QDISP` returned NAK), so **last_confirmed_profile** and profile feedback indicate the latest selection acknowledgment received by this connection. They start unknown, clear on connection loss, and cannot guarantee tracking of every physical knob/menu change. RDL Console's radio selection can remain cached after external commands.
+Config selection uses binary RDL V2 zone set `0x0500` with a zero-based profile byte. Current Config is read using V2 zone get `0x0501`; the corresponding responses are `0x8500` and `0x8501`. These commands were identified from the installed RDL Console and checked on firmware 0.1.27. Every change is verified by a separate current-Config query. Selecting the current Config is a no-op because the firmware may omit a redundant setter acknowledgment. The module polls the current Config at startup and with each level poll, so profile buttons also follow changes made elsewhere. Failed profile queries clear profile feedback without disabling working volume control.
+
+**Upgrade from 0.1.0:** that version incorrectly used `DISP0`–`DISP3`, which select display/menu modes and do not select Config profiles. Its acknowledgment-only profile validation was insufficient. Version 0.1.1 replaces those commands and adds real device readback. Existing profile action IDs, option values, presets, feedback IDs, and `last_confirmed_profile` remain compatible.
 
 ## Variables
 
@@ -40,9 +42,10 @@ The observed Console command is `DISP0` through `DISP3` (zero-based ASCII), with
 | `ch1_db`, `ch2_db`                   | Negative dB, or `-inf` when muted                          |
 | `ch1_muted`, `ch2_muted`             | 1 muted, 0 unmuted                                         |
 | `ch1_display`, `ch2_display`         | Human-readable level or MUTE                               |
-| `last_confirmed_profile`             | Config 1–4; blank until an acknowledgment is observed      |
+| `active_profile`                     | Current Config 1–4 from device readback; blank if unknown  |
+| `last_confirmed_profile`             | Compatibility alias for `active_profile`                   |
 
-Level variables become blank (display variables become Unknown) when disconnected. Feedbacks cover mute, attenuation thresholds, connection state, and last confirmed Config selection. The Both presets show channel A's level; use separate A/B buttons or both variables when channels have different levels.
+Level variables become blank (display variables become Unknown) when disconnected. Feedbacks cover mute, attenuation thresholds, connection state, and the queried active Config. The Both presets show channel A's level; use separate A/B buttons or both variables when channels have different levels.
 
 ## Development
 
@@ -65,10 +68,10 @@ Offline tests never contact hardware. The following opt-in command changes live 
 node tools/live-test.js DEVICE_IP LOCAL_INTERFACE_IP
 ```
 
-To also cycle Config 1–4, supply the known original Config number as the final argument. That profile is restored afterward:
+To also cycle Config 1–4, supply `--profiles`. The tool reads and restores the original Config automatically:
 
 ```sh
-node tools/live-test.js DEVICE_IP LOCAL_INTERFACE_IP 1
+node tools/live-test.js DEVICE_IP LOCAL_INTERFACE_IP --profiles
 ```
 
 Run only on an idle device. The test avoids 0 dB/full-volume settings, but does temporarily mute outputs. An abrupt process termination or network failure can prevent restore; the tool reports restore failures. See [hardware validation](HARDWARE-VALIDATION.md) for results.

@@ -10,6 +10,7 @@ async function main() {
 	client.on('fault', (error) => console.error(error.message))
 	client.on('warning', console.warn)
 	let original
+	let originalProfile
 	const results = []
 	async function expect(label, operation, expected) {
 		const response = await operation()
@@ -23,13 +24,14 @@ async function main() {
 		original = (await client.queryLevels()).levels
 		console.log('Original attenuation:', original)
 		const control = new VolumeControl(client)
-		// Config 1 was selected in Console before commissioning. Caller must explicitly
-		// supply the original profile to enable profile tests and restore it afterward.
+		// Supplying the final argument enables profile tests; restore uses device readback.
 		if (process.argv[4]) {
+			originalProfile = (await client.queryProfile()).profile
 			for (const profile of [1, 2, 3, 4, 2, 3, 1]) {
 				const response = await control.selectProfile(profile)
 				assert.equal(response.profile, profile)
-				console.log(`PASS select Config ${profile}: device acknowledged`)
+				assert.equal(response.source, 'query')
+				console.log(`PASS select Config ${profile}: independently queried device state`)
 			}
 		}
 		await expect('Set both channels', () => control.execute('set', 'both', 40), [40, 40])
@@ -73,11 +75,10 @@ async function main() {
 				process.exitCode = 1
 			}
 		}
-		if (process.argv[4]) {
+		if (originalProfile) {
 			try {
-				const profile = Number(process.argv[4])
-				await new VolumeControl(client).selectProfile(profile)
-				console.log('RESTORED Config', profile)
+				await new VolumeControl(client).selectProfile(originalProfile)
+				console.log('RESTORED Config', originalProfile)
 			} catch (error) {
 				console.error('PROFILE RESTORE FAILED:', error.message)
 				process.exitCode = 1

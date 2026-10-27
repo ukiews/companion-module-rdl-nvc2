@@ -6,7 +6,23 @@ class VolumeControl {
 	}
 	selectProfile(profile) {
 		const command = selectProfile(profile)
-		return this.client.serial(() => this.client.request(command, (r) => r.type === 'profile' && r.profile === profile))
+		return this.client.serial(async () => {
+			const before = await this.client.queryProfile()
+			if (before.profile === profile) return before
+			try {
+				await this.client.request(command, (r) => r.type === 'profile' && r.source === 'set' && r.profile === profile)
+			} catch (error) {
+				if (!error.message.startsWith('Timeout waiting')) throw error
+				// Firmware can omit an ACK after a retry selects an already active profile.
+				const actual = await this.client.queryProfile()
+				if (actual.profile === profile) return actual
+				throw error
+			}
+			const actual = await this.client.queryProfile()
+			if (actual.profile !== profile)
+				throw new Error(`Config readback mismatch: selected ${profile}, device reports ${actual.profile}`)
+			return actual
+		})
 	}
 	execute(action, selection, value) {
 		return this.client.serial(async () => {
