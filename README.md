@@ -47,6 +47,10 @@ Display/menu commands `DISP0`–`DISP3` do not select Config profiles. The modul
 
 Level variables become blank (display variables become Unknown) when disconnected. Feedbacks cover mute, attenuation thresholds, connection state, and the queried active Config. The Both presets show channel A's level; use separate A/B buttons or both variables when channels have different levels.
 
+## Optional experimental display firmware
+
+A separate [D-NVC2 0.1.30 UI firmware prerelease](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/firmware-ui-0.1.30-r2) provides a larger numeric volume display, taller cyan level bar, and prominent red mute view. It is optional and is not a Companion module update or an official RDL release. See [firmware details, source, validation, and installation limitations](firmware-ui/README.md). The Companion module does not require modified firmware.
+
 ## Development
 
 Use Node 22.20+ within the Node 22 release line and pnpm 11:
