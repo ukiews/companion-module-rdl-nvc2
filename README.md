@@ -1,6 +1,6 @@
 # RDL D-NVC2 for Bitfocus Companion
 
-Control an RDL D-NVC2 over its control network: independent or linked output attenuation, volume up/down, mute/restore, saved Config selection, live variables, and button feedback. D-NVC2 firmware 0.1.27 was tested on hardware. DB-NVC2 and DS-NVC2 are listed as enclosure variants; they were not separately tested.
+Control an RDL D-NVC2 over its control network: independent or linked output attenuation, volume up/down, mute/restore, saved Config selection, live variables, and button feedback. Hardware validation covers D-NVC2 firmware 0.1.27 and the custom display build based on 0.1.30. DB-NVC2 and DS-NVC2 are listed as enclosure variants; they were not separately tested.
 
 ## Install
 
@@ -12,7 +12,13 @@ On a computer with several network interfaces, select the IPv4 address of the lo
 
 Commands go to the device on UDP 18700. Replies arrive at multicast `239.254.50.0:9000` by default. Allow inbound UDP replies through the host firewall and ensure multicast is supported between the device and Companion. Different response address/port settings can be entered in the connection if already configured on the device; the module never reconfigures the device network.
 
-Only replies whose source IPv4 matches the configured device are processed. Shared UDP binding supports other RDL applications listening on the same port. Prefer one Companion connection per device, because concurrent controllers can still interleave changes. Polling repeats after errors; each request retries once on timeout. UDP acknowledgments have no transaction IDs, so simultaneous external control cannot be made atomic.
+Only replies whose source IPv4 matches the configured device are processed. Shared UDP binding supports other RDL applications listening on the same port. Prefer one Companion connection per device, because concurrent controllers can still interleave changes. Each request retries once on timeout. Socket failures reopen automatically with a retry delay capped at 10 seconds; three consecutive failed level polls also reopen the socket. UDP acknowledgments have no transaction IDs, so simultaneous external control cannot be made atomic.
+
+The default polling interval is one second after the previous poll completes, configurable from 500 to 10,000 ms. A healthy cycle queries levels and the active Config; capabilities are queried at startup and after a connection failure. Unchanged replies do not republish variables or reevaluate button feedback. There are no additional background scan timers or runtime dependencies.
+
+The action queue holds at most 32 waiting operations. Volume adjustments expire after one second and waiting adjustments are discarded on a request timeout or a subsequent Mute/Toggle action. Actions take priority over waiting polls, while explicit state changes retain their order. An operation already in progress must finish or time out before the next one can run.
+
+Disable the connection before updating device firmware. If the module receives a bootloader identity, it pauses polling and controls automatically. After the update, use **Refresh device status** to check the device identity and resume, or disable and re-enable the connection. Automatic detection is not a substitute for disabling the connection before an update.
 
 ## Volume and mute
 
@@ -20,9 +26,9 @@ Only replies whose source IPv4 matches the configured device are processed. Shar
 - Set attenuation accepts 0–63 dB. Zero is full volume; larger values are quieter.
 - Adjust volume uses positive values for louder and negative values for quieter. Adjustments clamp at 0/63 and leave muted channels muted.
 - Mute uses 64. Hardware reports 63 and 64 distinctly, unlike the older RN-family documentation's generalized mute range.
-- Restore returns each channel to its level before a module-issued mute. Restore memory is per connection and is lost on restart/reconfiguration. If a muted channel has no saved level, explicitly use Set attenuation; the module refuses to guess a restore level.
+- Restore returns each channel to its level before a module-issued mute. Each saved level is consumed by restore and cleared by an explicit Set or an observed external unmute. All saved levels are cleared on connection failure, restart/reconfiguration, or a detected bootloader. If a muted channel has no saved level, explicitly use Set attenuation; the module refuses to guess a restore level.
 - Linked toggle mutes both if either is unmuted; it restores both if both are muted. Individual channel levels are preserved.
-- The module queries current levels before volume changes and reads them again after writes. Levels from physical knob changes appear on subsequent polls. Linked writes occur sequentially, so a failure can leave one channel changed; the module logs the error and subsequent polls show actual device state.
+- The module queries current levels before volume changes and verifies changed channels with readback after writes. A lost setter acknowledgment is accepted only if readback confirms the requested level. Levels from physical knob changes appear on subsequent polls. Linked writes occur sequentially, so a failure can leave one channel changed; the module logs the error and subsequent polls show actual device state.
 
 ## Saved RDL Config profiles
 

@@ -16,7 +16,7 @@ const context = {
 		result.variables = variables
 	},
 	setVariableValues: (values) => {
-		result.values = values
+		result.values = { ...result.values, ...values }
 	},
 	setPresetDefinitions: (sections, presets) => {
 		result.sections = sections

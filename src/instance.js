@@ -17,9 +17,12 @@ class Nvc2Instance extends InstanceBase {
 	}
 	async destroy() {
 		clearTimeout(this.pollTimer)
+		clearTimeout(this.reconnectTimer)
 		this.generation = (this.generation || 0) + 1
 		this.client?.close()
 		this.client = undefined
+		this.control?.clearRestore()
+		this.control = undefined
 	}
 	getConfigFields() {
 		return [
@@ -51,95 +54,186 @@ class Nvc2Instance extends InstanceBase {
 			},
 		]
 	}
+	createClient(options) {
+		return new RdlClient(options)
+	}
+	retryDelay(attempt) {
+		return Math.min(10000, 1000 * 2 ** Math.min(attempt, 4))
+	}
 	async configUpdated(config) {
 		await this.destroy()
-		const generation = this.generation
 		this.config = config
 		this.levels = [null, null]
 		this.connected = false
 		this.profile = null
 		this.model = ''
 		this.firmware = ''
+		this.maintenance = false
+		this.needsCapabilities = true
+		this.reconnectAttempts = 0
+		this.lastPublished = null
 		this.defineControls()
 		this.publish()
-		if (!config.host) {
+		if (!config.host?.trim()) {
 			this.updateStatus(InstanceStatus.BadConfig, 'Enter the device IPv4 address')
 			return
 		}
+		await this.startConnection(config, this.generation)
+	}
+	unavailable(error) {
+		this.connected = false
+		this.profile = null
+		this.needsCapabilities = true
+		this.control?.clearRestore()
+		this.updateStatus(InstanceStatus.ConnectionFailure, error.message)
+		this.publish()
+	}
+	scheduleReconnect(config, generation) {
+		if (generation !== this.generation || this.maintenance) return
+		clearTimeout(this.pollTimer)
+		clearTimeout(this.reconnectTimer)
+		this.reconnectTimer = setTimeout(() => {
+			if (generation === this.generation) void this.startConnection(config, generation)
+		}, this.retryDelay(this.reconnectAttempts++))
+	}
+	schedulePoll(client, generation, delay) {
+		if (generation !== this.generation || client !== this.client || this.maintenance) return
+		clearTimeout(this.pollTimer)
+		this.pollTimer = setTimeout(() => void this.pollClient(client, generation), delay)
+	}
+	async startConnection(config, generation) {
+		if (generation !== this.generation) return
+		let client
 		try {
-			const client = new RdlClient({
+			client = this.createClient({
 				host: config.host.trim(),
 				group: config.group || '239.254.50.0',
 				port: Number(config.port || 9000),
 				localAddress: (config.localAddress || '').trim(),
 			})
-			this.client = client
-			this.control = new VolumeControl(client)
-			client.on('response', (response) => {
-				if (generation !== this.generation) return
-				if (response.type === 'capabilities') {
-					this.model = response.model
-					this.firmware = response.firmware
-					if (!/^(D|DB|DS)-NVC2$/.test(this.model))
-						this.log('warn', `Unexpected device model: ${this.model}; this module is intended for D-NVC2`)
-				}
-				if (response.type === 'levels') {
-					this.levels = response.levels
-					this.connected = true
-					this.updateStatus(InstanceStatus.Ok)
-				}
-				if (response.type === 'profile' && response.source === 'query') this.profile = response.profile
-				this.publish()
-			})
-			client.on('warning', (message) => this.log('warn', message))
-			client.on('fault', (error) => {
-				if (generation === this.generation) {
+		} catch (error) {
+			this.updateStatus(InstanceStatus.BadConfig, error.message)
+			return
+		}
+		this.client = client
+		this.control = new VolumeControl(client)
+		const current = () => generation === this.generation && client === this.client
+		client.on('response', (response) => {
+			if (!current()) return
+			if (response.type === 'capabilities') {
+				const wasPaused = this.maintenance
+				const previousModel = this.model
+				this.model = response.model
+				this.firmware = response.firmware
+				this.maintenance = /BOOTLOADER/i.test(response.model)
+				client.setPaused(this.maintenance)
+				this.needsCapabilities = false
+				if (this.maintenance) {
+					clearTimeout(this.pollTimer)
 					this.connected = false
 					this.profile = null
-					this.updateStatus(InstanceStatus.ConnectionFailure, error.message)
-					this.publish()
+					this.control.clearRestore()
+					this.updateStatus(InstanceStatus.Disconnected, 'Bootloader detected: polling paused; refresh after update')
+				} else {
+					if (previousModel !== this.model && !/^(D|DB|DS)-NVC2$/.test(this.model))
+						this.log('warn', `Unexpected device model: ${this.model}; this module is intended for D-NVC2`)
+					if (wasPaused) this.schedulePoll(client, generation, 0)
 				}
-			})
-			this.updateStatus(InstanceStatus.Connecting)
+			}
+			if (response.type === 'levels' && !this.maintenance) {
+				this.control.observeLevels(response.levels)
+				this.levels = response.levels
+				this.connected = true
+				this.updateStatus(InstanceStatus.Ok)
+			}
+			if (response.type === 'profile' && response.source === 'query' && !this.maintenance)
+				this.profile = response.profile
+			this.publish()
+		})
+		client.on('warning', (message) => {
+			if (current()) this.log('warn', message)
+		})
+		client.on('fault', (error) => {
+			if (!current()) return
+			this.unavailable(error)
+			if (client.ready) {
+				client.close()
+				this.client = undefined
+				this.control = undefined
+				this.scheduleReconnect(config, generation)
+			}
+		})
+		this.updateStatus(InstanceStatus.Connecting)
+		try {
 			await client.open()
-			if (generation !== this.generation) return
-			const poll = async () => {
-				if (generation !== this.generation) return
-				try {
-					await client.serial(async () => {
-						if (!this.model) {
-							try {
-								await client.queryCapabilities()
-							} catch (error) {
-								this.log('debug', error.message)
-							}
-						}
-						await client.queryLevels()
+			if (!current()) {
+				client.close()
+				return
+			}
+			this.reconnectAttempts = 0
+			this.failedPolls = 0
+			void this.pollClient(client, generation)
+		} catch (error) {
+			if (!current()) return
+			client.close()
+			this.unavailable(error)
+			this.client = undefined
+			this.control = undefined
+			this.scheduleReconnect(config, generation)
+		}
+	}
+	async pollClient(client, generation) {
+		const current = () => generation === this.generation && client === this.client
+		if (!current() || this.maintenance) return
+		try {
+			await client.serial(
+				async () => {
+					if (!this.model) {
 						try {
-							await client.queryProfile()
+							await client.queryCapabilities()
 						} catch (error) {
-							this.profile = null
-							this.publish()
 							this.log('debug', error.message)
 						}
-					})
-				} catch (error) {
-					if (generation !== this.generation) return
-					this.connected = false
-					this.profile = null
-					this.updateStatus(InstanceStatus.ConnectionFailure, error.message)
-					this.publish()
-				}
-				if (generation === this.generation)
-					this.pollTimer = setTimeout(poll, Math.max(500, Math.min(10000, Number(config.pollMs) || 1000)))
-			}
-			void poll()
+					}
+					if (this.maintenance) return
+					await client.queryLevels()
+					this.failedPolls = 0
+					if (this.needsCapabilities) {
+						try {
+							await client.queryCapabilities()
+						} catch (error) {
+							this.log('debug', error.message)
+						}
+					}
+					if (this.maintenance) return
+					try {
+						await client.queryProfile()
+					} catch (error) {
+						if (!current()) return
+						this.profile = null
+						this.publish()
+						this.log('debug', error.message)
+					}
+				},
+				{ kind: 'poll' },
+			)
 		} catch (error) {
-			if (generation === this.generation) {
-				this.client?.close()
-				this.updateStatus(InstanceStatus.ConnectionFailure, error.message)
+			if (!current() || this.maintenance) return
+			if (['RDL_ACTION_EXPIRED', 'RDL_ACTION_CANCELLED', 'RDL_QUEUE_FULL'].includes(error.code)) {
+				this.schedulePoll(client, generation, Math.max(500, Math.min(10000, Number(this.config.pollMs) || 1000)))
+				return
+			}
+			this.unavailable(error)
+			if (++this.failedPolls >= 3) {
+				client.close()
+				this.client = undefined
+				this.control = undefined
+				this.scheduleReconnect(this.config, generation)
+				return
 			}
 		}
+		if (current())
+			this.schedulePoll(client, generation, Math.max(500, Math.min(10000, Number(this.config.pollMs) || 1000)))
 	}
 	publish() {
 		const values = {
@@ -156,7 +250,12 @@ class Nvc2Instance extends InstanceBase {
 			values[`ch${i + 1}_muted`] = level === null ? '' : level >= MUTE ? 1 : 0
 			values[`ch${i + 1}_display`] = level === null ? 'Unknown' : level >= MUTE ? 'MUTE' : `${-level} dB`
 		}
-		this.setVariableValues(values)
+		const changed = Object.fromEntries(
+			Object.entries(values).filter(([key, value]) => !this.lastPublished || this.lastPublished[key] !== value),
+		)
+		if (!Object.keys(changed).length) return
+		this.lastPublished = values
+		this.setVariableValues(changed)
 		this.checkFeedbacks('muted', 'level', 'connected', 'profile')
 	}
 	defineControls() {
@@ -189,10 +288,16 @@ class Nvc2Instance extends InstanceBase {
 				options,
 				callback: async (event) => {
 					try {
+						if (this.maintenance) throw new Error('Polling and control are paused while the bootloader is active')
 						if (!this.control || !this.client?.ready) throw new Error('Device is not connected')
 						await this.control.execute(id, String(event.options.channel), Number(event.options.value))
 					} catch (error) {
-						this.log('error', error.message)
+						this.log(
+							['RDL_ACTION_EXPIRED', 'RDL_ACTION_CANCELLED', 'RDL_QUEUE_FULL', 'RDL_MAINTENANCE'].includes(error.code)
+								? 'debug'
+								: 'error',
+							error.message,
+						)
 					}
 				},
 			}
@@ -202,12 +307,23 @@ class Nvc2Instance extends InstanceBase {
 			options: [],
 			callback: async () => {
 				try {
-					await this.client?.serial(async () => {
-						await this.client.queryLevels()
-						await this.client.queryProfile()
-					})
+					const client = this.client
+					await client?.serial(
+						async () => {
+							if (this.maintenance || this.needsCapabilities) await client.queryCapabilities()
+							if (this.maintenance) return
+							await client.queryLevels()
+							await client.queryProfile()
+						},
+						{ kind: 'maintenance' },
+					)
 				} catch (error) {
-					this.log('error', error.message)
+					this.log(
+						['RDL_ACTION_EXPIRED', 'RDL_ACTION_CANCELLED', 'RDL_QUEUE_FULL', 'RDL_MAINTENANCE'].includes(error.code)
+							? 'debug'
+							: 'error',
+						error.message,
+					)
 				}
 			},
 		}
@@ -223,10 +339,16 @@ class Nvc2Instance extends InstanceBase {
 			options: [profileOption()],
 			callback: async (event) => {
 				try {
+					if (this.maintenance) throw new Error('Polling and control are paused while the bootloader is active')
 					if (!this.control || !this.client?.ready) throw new Error('Device is not connected')
 					await this.control.selectProfile(Number(event.options.profile))
 				} catch (error) {
-					this.log('error', error.message)
+					this.log(
+						['RDL_ACTION_EXPIRED', 'RDL_ACTION_CANCELLED', 'RDL_QUEUE_FULL', 'RDL_MAINTENANCE'].includes(error.code)
+							? 'debug'
+							: 'error',
+						error.message,
+					)
 				}
 			},
 		}
