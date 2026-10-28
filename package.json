@@ -1,6 +1,6 @@
 {
 	"name": "companion-module-rdl-nvc2",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"main": "src/main.js",
 	"description": "Bitfocus Companion control of RDL D-NVC2 network volume controls",
 	"license": "MIT",
