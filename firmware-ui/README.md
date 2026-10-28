@@ -4,7 +4,7 @@ This optional firmware changes the physical knob's volume and mute screens. It i
 
 ## Download
 
-Download the tested HEX and `SHA256SUMS.txt` from the [firmware prerelease](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/firmware-ui-v1.0.0). The HEX is based on the specific RDL D-NVC2 0.1.30 image identified below. Other firmware versions, models, and bootloaders have not been validated.
+Download the tested HEX and `SHA256SUMS.txt` from the [firmware prerelease](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/0.1.30_custom). The HEX is based on the specific RDL D-NVC2 0.1.30 image identified below. Other firmware versions, models, and bootloaders have not been validated.
 
 ![Emulated firmware screens](preview.png)
 
