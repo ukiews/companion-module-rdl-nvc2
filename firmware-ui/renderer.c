@@ -192,3 +192,9 @@ static void render(int force) {
 }
 __attribute__((used)) void ui_volume_enter(void) {render(1);}
 __attribute__((used)) void ui_volume_update(void) {render(0);}
+/* Runs after the stock property setter commits zoneIndex. Queue work for the
+   existing display thread; never draw from the network/property caller. */
+__attribute__((used)) void ui_profile_changed(void *property) {
+    (void)property;
+    if(STATE[0x1a]==1) ((void (*)(void))0x080665d5u)();
+}

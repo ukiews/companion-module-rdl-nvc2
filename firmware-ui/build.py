@@ -54,6 +54,7 @@ def main():
     original,used,entry=read_hex(raw)
     assert original[0x6160:0x6164].hex()=='30b585b0'
     assert original[0x61e0:0x61e4].hex()=='70b584b0'
+    assert original[0x14d3c:0x14d40]==bytes(4)
     assert original[PATCH-BASE:]==b'\xff'*(BASE+SIZE-PATCH)
     subprocess.run([sys.executable,str(ROOT/'generate_fonts.py')],check=True)
     elf=BUILD/'ui-patch.elf'
@@ -63,7 +64,7 @@ def main():
           '-nostdlib','-nostartfiles','-I'+str(BUILD),'-Wl,--gc-sections',
           '-Wl,-Map='+str(BUILD/'ui-patch.map'),'-T'+str(ROOT/'patch.ld')]
     print(call('arm-none-eabi-gcc',*opts,ROOT/'renderer.c',ROOT/'hooks.S','-o',elf))
-    sections=[('.hook_enter',0x08066160),('.hook_update',0x080661e0),('.patch',PATCH)]
+    sections=[('.hook_enter',0x08066160),('.hook_update',0x080661e0),('.hook_profile',0x08074d3c),('.patch',PATCH)]
     modified=bytearray(original);patches=[]
     for name,address in sections:
         dest=BUILD/(name[1:]+'.bin')
@@ -72,7 +73,7 @@ def main():
         modified[address-BASE:address-BASE+len(b)]=b
         used.update(range(address,address+len(b)))
         patches.append({'section':name,'address':hex(address),'length':len(b),'sha256':hashlib.sha256(b).hexdigest()})
-    allowed=lambda a:(0x08066160<=a<0x08066164 or 0x080661e0<=a<0x080661e4 or PATCH<=a<BASE+SIZE)
+    allowed=lambda a:(0x08066160<=a<0x08066164 or 0x080661e0<=a<0x080661e4 or 0x08074d3c<=a<0x08074d40 or PATCH<=a<BASE+SIZE)
     changed=[BASE+i for i,(a,b) in enumerate(zip(original,modified)) if a!=b]
     assert all(map(allowed,changed))
     assert modified[:0x298]==original[:0x298],'Vector table must be untouched'

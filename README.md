@@ -49,7 +49,7 @@ Level variables become blank (display variables become Unknown) when disconnecte
 
 ## Optional experimental display firmware
 
-A separate [D-NVC2 0.1.30 UI firmware prerelease](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/firmware-ui-0.1.30-r2) provides a larger numeric volume display, taller cyan level bar, and prominent red mute view. It is optional and is not a Companion module update or an official RDL release. See [firmware details, source, validation, and installation limitations](firmware-ui/README.md). The Companion module does not require modified firmware.
+A separate [D-NVC2 0.1.30 UI firmware prerelease](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/firmware-ui-v1.0.0) provides a larger numeric volume display, taller cyan level bar, and prominent red mute view. It is optional and is not a Companion module update or an official RDL release. See [firmware details, source, validation, and installation limitations](firmware-ui/README.md). The Companion module does not require modified firmware.
 
 ## Development
 

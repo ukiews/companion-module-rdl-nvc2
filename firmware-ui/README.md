@@ -1,10 +1,10 @@
-# Experimental D-NVC2 display firmware — revision 2
+# Experimental D-NVC2 display firmware — revision 3
 
 This optional firmware changes the physical knob's volume and mute screens. It is separate from the Companion module and is not an official RDL release. The module does not require it.
 
 ## Download
 
-Download the tested HEX and `SHA256SUMS.txt` from the [firmware prerelease](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/firmware-ui-0.1.30-r2). The HEX is based on the specific RDL D-NVC2 0.1.30 image identified below. Other firmware versions, models, and bootloaders have not been validated.
+Download the tested HEX and `SHA256SUMS.txt` from the [firmware prerelease](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/firmware-ui-v1.0.0). The HEX is based on the specific RDL D-NVC2 0.1.30 image identified below. Other firmware versions, models, and bootloaders have not been validated.
 
 ![Emulated firmware screens](preview.png)
 
@@ -13,22 +13,25 @@ Download the tested HEX and `SHA256SUMS.txt` from the [firmware prerelease](http
 - Large 1–100 indication and cyan level bar on a dark background.
 - Dynamic name of the active saved Config profile.
 - Full red mute screen with **MUTED** and a centered **Press to unmute** hint.
-- Revision 2 increases the hint font from 15 to 20 pixels and the bar height from 13 to 22 pixels.
+- Readable 20-pixel mute hint and 22-pixel-high rounded level bar.
+- Profile names update immediately after remote Config changes, without turning the knob.
 - No speaker icon, minus sign, dB label, `/100`, or channel footer.
 
 The 1–100 indication maps the existing 64 non-muted attenuation values. It does not change the audio gain curve or add hardware gain steps. The five stock menu themes remain present. The new volume and mute views deliberately keep their fixed dark/cyan and red colors regardless of menu theme selection.
 
 ## Validation and limitations
 
-Revision 2 was installed on one D-NVC2 running the legacy H743 bootloader 0.1.5. The complete application partition hash matched. Live control checks passed for all five themes, all four saved Config profiles, volume, mute/unmute, and restored settings. The original design's physical volume and mute views were confirmed by the owner; revision 2's readability changes have automated renderer and live control validation.
+This release was installed on one D-NVC2 running the legacy H743 bootloader 0.1.5. The complete application partition hash matched. Live control checks passed for all five themes, all four saved Config profiles, volume, mute/unmute, and restored settings. The original design's physical volume and mute views were confirmed by the owner; revision 3's readability changes have automated renderer and live control validation.
 
-Offline checks include 93 renderer cases, 25 theme checks, 19 updater/recovery simulations, and four cases executing the actual vendor SPI HAL with simulated hardware registers. Observed stack usage in the latter was 420 bytes against the 1,024-byte display-thread stack; caller and interrupt context are additional.
+Offline checks include 93 renderer cases, 25 theme checks, 20 updater/recovery simulations, and four cases executing the actual vendor SPI HAL with simulated hardware registers. Eleven additional profile-redraw regression cases execute the original property setter with unchanged levels, reproduce the old missing notification, and verify queued redraws without encoder events in normal/muted states and no overlays on other views. The owner confirmed immediate profile-name updates from Companion on the physical knob. Observed stack usage in the latter was 420 bytes against the 1,024-byte display-thread stack; caller and interrupt context are additional.
 
-Only two four-byte display hooks and a new renderer/font payload differ from the vendor image. The vector table, audio/network code, and bootloader are unchanged. Testing on one unit does not establish compatibility with other hardware revisions or long-term reliability.
+Two four-byte display hooks, one four-byte profile callback pointer, and a new renderer/font payload differ from the vendor image. The vector table, audio/network code, and bootloader are unchanged. Testing on one unit does not establish compatibility with other hardware revisions or long-term reliability.
 
 ## Installation and recovery
 
 The tested installation used a purpose-built legacy H743 uploader with a verified stock backup and complete image-hash verification. **A portable installer is not included in this release.** The tested Console 3 version's stock update path had incompatible H743 partition/protocol handling; selecting this HEX in that updater is not a validated installation procedure. Do not enable **Bootloader Update** for this UI patch.
+
+Disable Companion connections/polling and close other RDL controllers during firmware updates. Concurrent control traffic was associated with lost update acknowledgements during testing.
 
 Keep the original vendor firmware and establish a recovery procedure for your exact hardware before attempting installation. A verified backup can be restored while the bootloader is reachable, but software rollback cannot guarantee recovery from an application crash that prevents network access. Physical recovery after such a crash was not established in this project.
 
@@ -57,9 +60,9 @@ Outputs are written under `firmware-ui/dist/`. The script validates input record
 
 ```text
 Patched HEX SHA-256:
-5592c62fdcd43252f17770d1fd96eebfc692747efd546e6f0d71133060fd5619
+7e030bba58d438d4db059b098ae8253aa1a095ed36cf3f5bd67c954d954079df
 
-Patched full-partition FNV-1a-64: e16ad1f6e5940d96
+Patched full-partition FNV-1a-64: 8d6685cfb23053ac
 Stock full-partition FNV-1a-64:   cc4e21c390e3bf1b
 Application partition:          0x08060000–0x080bffff
 ```
