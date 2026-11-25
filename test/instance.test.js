@@ -50,6 +50,29 @@ test('Actual Companion API 2 accepts definitions and structured presets', async 
 	assert.equal(state.values.ch1_display, 'Unknown')
 	await instance.destroy()
 })
+test('Set attenuation supports percent and preserves existing saved dB actions', async () => {
+	const { instance, state } = fixture()
+	await instance.init({ host: '' })
+	const calls = []
+	instance.client = { ready: true, close() {} }
+	instance.control = {
+		clearRestore() {},
+		execute: (...args) => calls.push(args),
+		setPercent: (...args) => calls.push(['percent', ...args]),
+	}
+	try {
+		await state.actions.set.callback({ options: { channel: '0', value: 20 } })
+		await state.actions.set.callback({ options: { channel: '1', unit: 'db', value: 40 } })
+		await state.actions.set.callback({ options: { channel: 'both', unit: 'percent', percent: 0, value: 31 } })
+		assert.deepEqual(calls, [
+			['set', '0', 20],
+			['set', '1', 40],
+			['percent', 'both', 0],
+		])
+	} finally {
+		await instance.destroy()
+	}
+})
 test('Live levels and disconnection produce honest variables and feedback', async () => {
 	const { instance, state } = fixture()
 	await instance.init({ host: '' })

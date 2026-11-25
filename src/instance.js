@@ -306,6 +306,18 @@ class Nvc2Instance extends InstanceBase {
 			toggle: 'Toggle mute',
 		})) {
 			const options = [channelOption()]
+			if (id === 'set')
+				options.push({
+					type: 'dropdown',
+					id: 'unit',
+					label: 'Unit',
+					default: 'db',
+					disableAutoExpression: true,
+					choices: [
+						{ id: 'db', label: 'Attenuation (dB)' },
+						{ id: 'percent', label: 'Volume (%)' },
+					],
+				})
 			if (id === 'set' || id === 'adjust')
 				options.push({
 					type: 'number',
@@ -315,6 +327,18 @@ class Nvc2Instance extends InstanceBase {
 					min: id === 'set' ? 0 : -63,
 					max: 63,
 					step: 1,
+					...(id === 'set' ? { isVisibleExpression: '$(options:unit) != "percent"' } : {}),
+				})
+			if (id === 'set')
+				options.push({
+					type: 'number',
+					id: 'percent',
+					label: 'Volume (%, 0 = mute)',
+					default: 51,
+					min: 0,
+					max: 100,
+					step: 1,
+					isVisibleExpression: '$(options:unit) == "percent"',
 				})
 			actions[id] = {
 				name,
@@ -323,7 +347,10 @@ class Nvc2Instance extends InstanceBase {
 					try {
 						if (this.maintenance) throw new Error('Polling and control are paused while the bootloader is active')
 						if (!this.control || !this.client?.ready) throw new Error('Device is not connected')
-						await this.control.execute(id, String(event.options.channel), Number(event.options.value))
+						const channel = String(event.options.channel)
+						if (id === 'set' && event.options.unit === 'percent')
+							await this.control.setPercent(channel, event.options.percent)
+						else await this.control.execute(id, channel, Number(event.options.value))
 					} catch (error) {
 						this.log(
 							['RDL_ACTION_EXPIRED', 'RDL_ACTION_CANCELLED', 'RDL_QUEUE_FULL', 'RDL_MAINTENANCE'].includes(error.code)

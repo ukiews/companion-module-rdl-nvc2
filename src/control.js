@@ -70,6 +70,13 @@ class VolumeControl {
 			return actual
 		})
 	}
+	async setPercent(selection, percent) {
+		if (!Number.isInteger(percent) || percent < 0 || percent > 100)
+			throw new Error('Volume percentage must be an integer from 0 to 100')
+		if (percent === 0) return this.execute('mute', selection)
+		// Match the custom display: 1% is 63 dB attenuation and 100% is 0 dB.
+		return this.execute('set', selection, Math.round(((100 - percent) * 63) / 99))
+	}
 	execute(action, selection, value) {
 		const expires = action === 'adjust' ? Date.now() + 1000 : null
 		const kind = action === 'adjust' ? 'adjust' : ['mute', 'toggle'].includes(action) ? 'mute' : 'action'

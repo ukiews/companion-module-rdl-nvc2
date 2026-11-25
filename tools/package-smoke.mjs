@@ -32,6 +32,8 @@ let originalLevels
 try {
 	await instance.init({ host: host || '', localAddress: process.argv[3] || '', pollMs: 500 })
 	assert.ok(result.actions.profile)
+	assert.equal(result.actions.set.options.find((option) => option.id === 'unit').default, 'db')
+	assert.equal(result.actions.set.options.find((option) => option.id === 'percent').max, 100)
 	assert.ok(result.actions.volume_lock)
 	assert.ok(result.feedbacks.volume_lock_enabled)
 	if (!host) assert.equal(result.values.volume_lock_enabled, '')

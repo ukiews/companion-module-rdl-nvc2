@@ -4,7 +4,7 @@ Control an RDL D-NVC2 over its control network: independent or linked output att
 
 ## Install
 
-Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-1.0.3.tgz` from the [module release](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/v1.0.3), open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. For an existing connection, select module version 1.0.3 after importing. This is a custom module; it is not yet in the Bitfocus module catalog.
+Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-1.0.4.tgz` from the [module release](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/v1.0.4), open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. For an existing connection, select module version 1.0.4 after importing. This is a custom module; it is not yet in the Bitfocus module catalog.
 
 On a computer with several network interfaces, select the IPv4 address of the local interface connected to the device. Leaving the interface blank joins multicast on every available IPv4 interface. The device address and local interface address are different settings.
 
@@ -23,7 +23,7 @@ Disable the connection before updating device firmware. If the module receives a
 ## Volume and mute
 
 - Channel A is Output 1; B is Output 2. Commands can target either or both.
-- Set attenuation accepts 0–63 dB. Zero is full volume; larger values are quieter.
+- **Set attenuation** accepts 0–63 dB of attenuation or 0–100% volume. In dB mode, 0 dB is full volume and larger values are quieter. In percent mode, 0% mutes and remembers the previous level for Restore. 1% is the quietest unmuted level (63 dB attenuation), and 100% is full volume. Intermediate values follow the custom display scale, rounded to the nearest 1 dB step.
 - Adjust volume uses positive values for louder and negative values for quieter. Adjustments clamp at 0/63 and leave muted channels muted.
 - Mute uses 64. Hardware reports 63 and 64 distinctly, unlike the older RN-family documentation's generalized mute range.
 - Restore returns each channel to its level before a module-issued mute. Each saved level is consumed by restore and cleared by an explicit Set or an observed external unmute. All saved levels are cleared on connection failure, restart/reconfiguration, or a detected bootloader. If a muted channel has no saved level, explicitly use Set attenuation; the module refuses to guess a restore level.

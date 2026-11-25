@@ -2,7 +2,7 @@
 
 Enter the device's IPv4 address. Commands use UDP 18700 and replies use multicast 239.254.50.0:9000. Select a local interface IPv4 if automatic multicast membership does not work. Allow inbound UDP and multicast on your control network.
 
-Use Presets for volume up/down, mute toggle, and Config 1–4 selection. A = Output 1, B = Output 2. Positive volume adjustments are louder; higher attenuation is quieter. Set attenuation supports 0–63 dB. Mute is 64.
+Use Presets for volume up/down, mute toggle, and Config 1–4 selection. A = Output 1, B = Output 2. Positive volume adjustments are louder and higher attenuation is quieter. In **Set attenuation**, choose **Attenuation (dB)** for 0–63 dB or **Volume (%)** for an absolute 0–100%. In percent mode, 0% mutes, 1% is the quietest unmuted level, and 100% is full volume.
 
 Mute restore remembers each channel's previous module-issued mute level. Restore consumes that saved level; an explicit Set or an observed external unmute clears it. Connection failures, restart/reconfiguration, and a detected bootloader clear all saved levels. If a channel is already muted without a saved level, explicitly set its attenuation. Volume up/down does not unmute. A Both toggle mutes both when either is unmuted, and restores both when both are muted. Changed levels are verified by device readback.
 
