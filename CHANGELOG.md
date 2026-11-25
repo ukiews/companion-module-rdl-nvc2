@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3
+
+- Added drag-and-drop **Enable Volume Lock** and **Disable Volume Lock** presets with button colors based on device readback.
+
 ## 1.0.2
 
 - Enable or disable the knob's automatic physical volume lock on supported firmware.

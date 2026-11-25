@@ -4,7 +4,7 @@ Control an RDL D-NVC2 over its control network: independent or linked output att
 
 ## Install
 
-Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-1.0.2.tgz` from the [module release](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/v1.0.2), open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. For an existing connection, select module version 1.0.2 after importing. This is a custom module; it is not yet in the Bitfocus module catalog.
+Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-1.0.3.tgz` from the [module release](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/v1.0.3), open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. For an existing connection, select module version 1.0.3 after importing. This is a custom module; it is not yet in the Bitfocus module catalog.
 
 On a computer with several network interfaces, select the IPv4 address of the local interface connected to the device. Leaving the interface blank joins multicast on every available IPv4 interface. The device address and local interface address are different settings.
 
@@ -40,7 +40,7 @@ Display/menu commands `DISP0`–`DISP3` do not select Config profiles. The modul
 
 ## Physical volume lock
 
-Use **Set physical volume lock** with **Enable** or **Disable** to change the knob's automatic front-panel volume lock. The device controls when it asks for its existing PIN. **Physical volume lock is enabled** and `volume_lock_enabled` report the setting, independent of whether the knob is currently showing the PIN prompt.
+Drag **Enable Volume Lock** or **Disable Volume Lock** from the **Physical volume lock** preset group, or add **Set physical volume lock** to an existing button. The preset matching the device's reported setting is highlighted. The device controls when it asks for its existing PIN. The feedbacks and `volume_lock_enabled` report the setting, independent of whether the knob is currently showing the PIN prompt.
 
 The module changes this setting only if the device reports support, as verified by read-only queries on `0.1.30_custom`. It reads back every change. Use **Refresh device status** to check the setting on demand.
 

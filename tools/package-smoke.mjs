@@ -35,7 +35,13 @@ try {
 	assert.ok(result.actions.volume_lock)
 	assert.ok(result.feedbacks.volume_lock_enabled)
 	if (!host) assert.equal(result.values.volume_lock_enabled, '')
-	assert.equal(Object.keys(result.presets).length, 13)
+	assert.equal(Object.keys(result.presets).length, 15)
+	assert.deepEqual(result.presets.volume_lock_enable.steps[0].down, [
+		{ actionId: 'volume_lock', options: { mode: 'enable' } },
+	])
+	assert.deepEqual(result.presets.volume_lock_disable.steps[0].down, [
+		{ actionId: 'volume_lock', options: { mode: 'disable' } },
+	])
 	assert.ok(result.variables.last_confirmed_profile)
 	if (host) {
 		const deadline = Date.now() + 15000

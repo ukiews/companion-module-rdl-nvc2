@@ -99,7 +99,9 @@ function fixture(t, specifications = [{}], retryMs = 5) {
 			state.variableCalls.push({ ...value })
 			Object.assign(state.values, value)
 		},
-		setPresetDefinitions() {},
+		setPresetDefinitions(sections, presets) {
+			state.presets = presets
+		},
 		checkFeedbacks() {
 			state.feedbackCalls++
 		},
@@ -147,9 +149,11 @@ test('Companion publishes verified volume lock state without querying on each le
 	assert.equal(client.calls.lock, 1)
 	await waitFor(() => client.calls.levels > 1, 'Level polling did not continue')
 	assert.equal(client.calls.lock, 1)
-	await state.actions.volume_lock.callback({ options: { mode: 'enable' } })
+	const enable = state.presets.volume_lock_enable.steps[0].down[0]
+	await state.actions[enable.actionId].callback({ options: enable.options })
 	assert.equal(state.values.volume_lock_enabled, 1)
-	await state.actions.volume_lock.callback({ options: { mode: 'disable' } })
+	const disable = state.presets.volume_lock_disable.steps[0].down[0]
+	await state.actions[disable.actionId].callback({ options: disable.options })
 	assert.equal(state.values.volume_lock_enabled, 0)
 	assert.equal(client.calls.lock, 5)
 	client.volumeLock = true

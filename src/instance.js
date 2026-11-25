@@ -4,6 +4,8 @@ const { VolumeControl } = require('./control')
 const { MUTE } = require('./protocol')
 const WHITE = combineRgb(255, 255, 255)
 const RED = combineRgb(180, 0, 0)
+const LOCK_ENABLED_COLOR = combineRgb(160, 90, 0)
+const LOCK_DISABLED_COLOR = combineRgb(0, 80, 160)
 const LOCK_POLL_MS = 30000
 const channels = [
 	{ id: 'both', label: 'Both channels' },
@@ -278,7 +280,9 @@ class Nvc2Instance extends InstanceBase {
 		if (!Object.keys(changed).length) return
 		this.lastPublished = values
 		this.setVariableValues(changed)
-		this.checkFeedbacks('muted', 'level', 'connected', 'profile', 'volume_lock_enabled')
+		this.checkFeedbacks('muted', 'level', 'connected', 'profile')
+		if (Object.hasOwn(changed, 'volume_lock_enabled'))
+			this.checkFeedbacks('volume_lock_enabled', 'volume_lock_disabled')
 	}
 	defineControls() {
 		const variables = [
@@ -455,9 +459,16 @@ class Nvc2Instance extends InstanceBase {
 			volume_lock_enabled: {
 				type: 'boolean',
 				name: 'Physical volume lock is enabled',
-				defaultStyle: { color: WHITE, bgcolor: combineRgb(160, 90, 0) },
+				defaultStyle: { color: WHITE, bgcolor: LOCK_ENABLED_COLOR },
 				options: [],
 				callback: () => this.connected && this.volumeLock === true,
+			},
+			volume_lock_disabled: {
+				type: 'boolean',
+				name: 'Physical volume lock is disabled',
+				defaultStyle: { color: WHITE, bgcolor: LOCK_DISABLED_COLOR },
+				options: [],
+				callback: () => this.connected && this.volumeLock === false,
 			},
 		})
 		const presets = {}
@@ -489,6 +500,19 @@ class Nvc2Instance extends InstanceBase {
 					steps: [{ down: [{ actionId: id, options: { channel: channel.id, ...options } }], up: [] }],
 					feedbacks: [{ feedbackId: 'muted', options: { channel: channel.id }, style: { bgcolor: RED } }],
 				}
+			}
+		}
+		for (const [mode, label, feedbackId, bgcolor] of [
+			['enable', 'Enable', 'volume_lock_enabled', LOCK_ENABLED_COLOR],
+			['disable', 'Disable', 'volume_lock_disabled', LOCK_DISABLED_COLOR],
+		]) {
+			presets[`volume_lock_${mode}`] = {
+				type: 'simple',
+				category: 'Physical volume lock',
+				name: `${label} Volume Lock`,
+				style: { text: `${label}\nVol Lock`, size: '14', color: WHITE, bgcolor: combineRgb(30, 30, 30) },
+				steps: [{ down: [{ actionId: 'volume_lock', options: { mode } }], up: [] }],
+				feedbacks: [{ feedbackId, options: {}, style: { bgcolor } }],
 			}
 		}
 		const categories = [...new Set(Object.values(presets).map((p) => p.category))]

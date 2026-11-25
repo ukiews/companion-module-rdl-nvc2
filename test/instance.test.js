@@ -35,8 +35,12 @@ test('Actual Companion API 2 accepts definitions and structured presets', async 
 	await instance.init({ host: '' })
 	assert.ok(!Array.isArray(state.variables))
 	assert.ok(state.variables.ch1_db)
-	assert.equal(Object.keys(state.presets).length, 13)
-	assert.equal(state.sections.flatMap((s) => s.definitions).length, 13)
+	assert.equal(Object.keys(state.presets).length, 15)
+	assert.equal(state.sections.flatMap((s) => s.definitions).length, 15)
+	assert.deepEqual(state.sections.find((s) => s.name === 'Physical volume lock').definitions, [
+		'volume_lock_enable',
+		'volume_lock_disable',
+	])
 	for (const preset of Object.values(state.presets)) {
 		assert.equal(preset.type, 'simple')
 		for (const action of preset.steps[0].down) assert.ok(state.actions[action.actionId])
@@ -61,12 +65,21 @@ test('Live levels and disconnection produce honest variables and feedback', asyn
 	assert.equal(state.feedbacks.profile.callback({ options: { profile: 3 } }), true)
 	assert.equal(state.values.volume_lock_enabled, 1)
 	assert.equal(state.feedbacks.volume_lock_enabled.callback(), true)
+	assert.equal(state.feedbacks.volume_lock_disabled.callback(), false)
+	instance.volumeLock = false
+	instance.publish()
+	assert.equal(state.feedbacks.volume_lock_disabled.callback(), true)
+	instance.volumeLock = null
+	instance.publish()
+	assert.equal(state.feedbacks.volume_lock_disabled.callback(), false)
+	instance.volumeLock = false
 	instance.connected = false
 	instance.publish()
 	assert.equal(state.values.last_confirmed_profile, '')
 	assert.equal(state.values.ch2_attenuation, '')
 	assert.equal(state.values.volume_lock_enabled, '')
 	assert.equal(state.feedbacks.volume_lock_enabled.callback(), false)
+	assert.equal(state.feedbacks.volume_lock_disabled.callback(), false)
 	assert.equal(state.feedbacks.muted.callback({ options: { channel: 'both' } }), false)
 	await instance.destroy()
 })
