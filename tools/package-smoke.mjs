@@ -45,6 +45,8 @@ try {
 		{ actionId: 'volume_lock', options: { mode: 'disable' } },
 	])
 	assert.ok(result.variables.last_confirmed_profile)
+	assert.ok(result.variables.config_3_label)
+	assert.equal(result.presets.profile_3.style.text, '$(self:config_3_label)')
 	if (host) {
 		const deadline = Date.now() + 15000
 		while (!result.values.connected && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100))

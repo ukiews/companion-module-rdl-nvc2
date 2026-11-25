@@ -1,6 +1,14 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { parseResponse, parseResponses, setLevel, selectProfile, setVolumeLock, buildV2 } = require('../src/protocol')
+const {
+	parseResponse,
+	parseResponses,
+	setLevel,
+	selectProfile,
+	setVolumeLock,
+	buildV2,
+	buildProfileNamesQuery,
+} = require('../src/protocol')
 test('Volume lock writes only the one-byte physical lock property', () => {
 	assert.equal(setVolumeLock(true).toString('hex'), '5632010000000000001d00000000000000000000010500090300000101')
 	assert.equal(setVolumeLock(false)[28], 0)
@@ -25,6 +33,26 @@ test('Config selection uses V2 zone set, not the display menu command', () => {
 	for (let profile = 1; profile <= 4; profile++) assert.equal(selectProfile(profile)[24], profile - 1)
 	for (let screen = 0; screen < 4; screen++) assert.equal(parseResponse(Buffer.from(`ACKDISP${screen}`)), null)
 	for (const invalid of [0, 5, NaN, 1.5]) assert.throws(() => selectProfile(invalid))
+})
+test('Config name queries use the indexed bundle or bulk query for the reported firmware', () => {
+	assert.equal(
+		buildProfileNamesQuery('0.1.30').toString('hex'),
+		'5632040000000000002c00000000000000000000050300060000050300060001050300060002050300060003',
+	)
+	for (const firmware of ['0.2.00', '0.3.00', '3.0'])
+		assert.equal(buildProfileNamesQuery(firmware).toString('hex'), '5632010000000000001800000000000000000000050b0004')
+})
+test('Config name replies support indexed and bulk records, blank names and unused slots', () => {
+	const indexed = Buffer.alloc(34)
+	indexed.writeUInt16BE(2)
+	indexed.write('GMeet', 2)
+	assert.deepEqual(parseResponses(buildV2(0x8503, indexed)), [{ type: 'profileName', profile: 3, name: 'GMeet' }])
+	const bulk = Buffer.from('03120007014d6978657200031200020300031200020458', 'hex')
+	assert.deepEqual(parseResponses(buildV2(0x850b, bulk)), [
+		{ type: 'profileName', profile: 2, name: 'Mixer' },
+		{ type: 'profileName', profile: 4, name: '' },
+	])
+	assert.deepEqual(parseResponses(buildV2(0x850b, bulk.subarray(0, -1))), [])
 })
 test('Decode captured V2 profile readback separately from a setter acknowledgment', () => {
 	const query = Buffer.from('56320100000000000019000000000000000000008501000500', 'hex')

@@ -2,7 +2,7 @@ const dgram = require('node:dgram')
 const { EventEmitter } = require('node:events')
 const { networkInterfaces } = require('node:os')
 const { isIPv4 } = require('node:net')
-const { parseResponses, buildV2, QUERY_PROPERTIES } = require('./protocol')
+const { parseResponses, buildV2, buildProfileNamesQuery, PROFILE_NUMBERS, QUERY_PROPERTIES } = require('./protocol')
 const MAX_QUEUED_OPERATIONS = 32
 const queueError = (message, code) => Object.assign(new Error(message), { code })
 
@@ -203,6 +203,24 @@ class RdlClient extends EventEmitter {
 	}
 	queryProfile() {
 		return this.request(buildV2(0x0501), (r) => r.type === 'profile' && r.source === 'query')
+	}
+	async queryProfileNames(firmware) {
+		const names = PROFILE_NUMBERS.map(() => null)
+		try {
+			await this.attempt(
+				buildProfileNamesQuery(firmware),
+				(response) => {
+					if (response.type !== 'profileName') return false
+					names[response.profile - 1] = response.name
+					return names.every((name) => name !== null)
+				},
+				Math.min(this.timeout, 500),
+			)
+		} catch (error) {
+			// Indexed replies can arrive separately. Keep the names we received if one packet was lost.
+			if (!error.message.startsWith('Timeout waiting') || names.every((name) => name === null)) throw error
+		}
+		return names
 	}
 	queryVolumeLock() {
 		// Some firmware does not report this optional setting. Keep its query from delaying volume actions.

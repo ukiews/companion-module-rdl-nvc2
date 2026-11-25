@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+
+- Config selectors and newly added Config preset buttons show the names reported by the knob, such as **Config 3 (GMeet)**.
+
 ## 1.0.4
 
 - **Set attenuation** accepts dB or an absolute volume percentage. 0% mutes, and 1–100% follows the custom display's scale in 1 dB steps.

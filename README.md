@@ -4,7 +4,7 @@ Control an RDL D-NVC2 over its control network: independent or linked output att
 
 ## Install
 
-Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-1.0.4.tgz` from the [module release](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/v1.0.4), open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. For an existing connection, select module version 1.0.4 after importing. This is a custom module; it is not yet in the Bitfocus module catalog.
+Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-1.0.5.tgz` from the [module release](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/v1.0.5), open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. For an existing connection, select module version 1.0.5 after importing. This is a custom module; it is not yet in the Bitfocus module catalog.
 
 On a computer with several network interfaces, select the IPv4 address of the local interface connected to the device. Leaving the interface blank joins multicast on every available IPv4 interface. The device address and local interface address are different settings.
 
@@ -14,7 +14,7 @@ Commands go to the device on UDP 18700. Replies arrive at multicast `239.254.50.
 
 Only replies whose source IPv4 matches the configured device are processed. Shared UDP binding supports other RDL applications listening on the same port. Prefer one Companion connection per device, because concurrent controllers can still interleave changes. Each request retries once on timeout. Socket failures reopen automatically with a retry delay capped at 10 seconds; three consecutive failed level polls also reopen the socket. UDP acknowledgments have no transaction IDs, so simultaneous external control cannot be made atomic.
 
-The default polling interval is one second after the previous poll completes, configurable from 500 to 10,000 ms. A healthy cycle queries levels and the active Config; capabilities are queried at startup and after a connection failure. The startup poll and subsequent polls about 30 seconds apart also read the physical volume lock setting. Unchanged replies do not republish variables or reevaluate button feedback. There are no additional background scan timers or runtime dependencies.
+The default polling interval is one second after the previous poll completes, configurable from 500 to 10,000 ms. A healthy cycle queries levels and the active Config; capabilities are queried at startup and after a connection failure. The startup poll and subsequent polls about 30 seconds apart also read Config names and the physical volume lock setting. Unchanged replies do not republish variables or reevaluate button feedback. There are no additional background scan timers or runtime dependencies.
 
 The action queue holds at most 32 waiting operations. Volume adjustments expire after one second and waiting adjustments are discarded on a request timeout or a subsequent Mute/Toggle action. Actions take priority over waiting polls, while explicit state changes retain their order. An operation already in progress must finish or time out before the next one can run.
 
@@ -34,6 +34,8 @@ Disable the connection before updating device firmware. If the module receives a
 
 The **Select saved RDL Config profile** action and four presets select Config 1–4 already stored in RDL Console. These are the knob's saved channel configurations; this action does not create or modify profiles or store/recall a pair of volume values. Configure names, channel assignments, and enable flags in RDL Console.
 
+The Config selector displays device-reported names in parentheses, such as **Config 3 (GMeet)**. Slots without a name show their number. **Refresh device status** rereads the names on demand. Newly added Config presets use these labels as their button text. To use a live label on an existing button, set its text to the corresponding `config_1_label` through `config_4_label` variable.
+
 Config selection uses binary RDL V2 zone set `0x0500` with a zero-based profile byte. Current Config is read using V2 zone get `0x0501`; the corresponding responses are `0x8500` and `0x8501`. These commands were identified from the installed RDL Console and checked on firmware 0.1.27. Every change is verified by a separate current-Config query. Selecting the current Config is a no-op because the firmware may omit a redundant setter acknowledgment. The module polls the current Config at startup and with each level poll, so profile buttons also follow changes made elsewhere. Failed profile queries clear profile feedback without disabling working volume control.
 
 Display/menu commands `DISP0`–`DISP3` do not select Config profiles. The module uses V2 Config commands and independently queries actual state. Existing development-build profile actions, option values, presets, feedback IDs, and `last_confirmed_profile` remain compatible.
@@ -46,17 +48,18 @@ The module changes this setting only if the device reports support, as verified 
 
 ## Variables
 
-| Variable                             | Meaning                                                    |
-| ------------------------------------ | ---------------------------------------------------------- |
-| `connected`                          | 1 when valid level replies are being received, otherwise 0 |
-| `model`, `firmware`                  | Device capabilities                                        |
-| `ch1_attenuation`, `ch2_attenuation` | Positive attenuation; 64 represents mute                   |
-| `ch1_db`, `ch2_db`                   | Negative dB, or `-inf` when muted                          |
-| `ch1_muted`, `ch2_muted`             | 1 muted, 0 unmuted                                         |
-| `ch1_display`, `ch2_display`         | Human-readable level or MUTE                               |
-| `active_profile`                     | Current Config 1–4 from device readback; blank if unknown  |
-| `last_confirmed_profile`             | Compatibility alias for `active_profile`                   |
-| `volume_lock_enabled`                | 1 enabled, 0 disabled, blank if unavailable                |
+| Variable                                  | Meaning                                                    |
+| ----------------------------------------- | ---------------------------------------------------------- |
+| `connected`                               | 1 when valid level replies are being received, otherwise 0 |
+| `model`, `firmware`                       | Device capabilities                                        |
+| `ch1_attenuation`, `ch2_attenuation`      | Positive attenuation; 64 represents mute                   |
+| `ch1_db`, `ch2_db`                        | Negative dB, or `-inf` when muted                          |
+| `ch1_muted`, `ch2_muted`                  | 1 muted, 0 unmuted                                         |
+| `ch1_display`, `ch2_display`              | Human-readable level or MUTE                               |
+| `active_profile`                          | Current Config 1–4 from device readback; blank if unknown  |
+| `last_confirmed_profile`                  | Compatibility alias for `active_profile`                   |
+| `config_1_label` through `config_4_label` | Config number and the saved name, when available           |
+| `volume_lock_enabled`                     | 1 enabled, 0 disabled, blank if unavailable                |
 
 Level variables become blank (display variables become Unknown) when disconnected. Feedbacks cover mute, attenuation thresholds, connection state, and the queried active Config. The Both presets show channel A's level; use separate A/B buttons or both variables when channels have different levels.
 

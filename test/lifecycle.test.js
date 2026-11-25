@@ -19,7 +19,8 @@ class FakeClient extends EventEmitter {
 		this.options = options
 		this.ready = false
 		this.closed = false
-		this.calls = { open: 0, close: 0, capabilities: 0, levels: 0, profile: 0, lock: 0 }
+		this.calls = { open: 0, close: 0, capabilities: 0, levels: 0, profile: 0, names: 0, lock: 0 }
+		this.profileNames = spec.profileNames ?? [null, null, null, null]
 		this.volumeLock = spec.volumeLock ?? null
 		this.tail = Promise.resolve()
 	}
@@ -72,6 +73,10 @@ class FakeClient extends EventEmitter {
 		this.emit('response', result)
 		return result
 	}
+	async queryProfileNames() {
+		this.calls.names++
+		return this.profileNames
+	}
 	async request(command, match) {
 		assert.equal(command.readUInt16BE(20), 0x0105)
 		this.volumeLock = command[28] === 1
@@ -93,7 +98,9 @@ function fixture(t, specifications = [{}], retryMs = 5) {
 		setActionDefinitions(value) {
 			state.actions = value
 		},
-		setFeedbackDefinitions() {},
+		setFeedbackDefinitions(value) {
+			state.feedbacks = value
+		},
 		setVariableDefinitions() {},
 		setVariableValues(value) {
 			state.variableCalls.push({ ...value })
@@ -159,6 +166,35 @@ test('Companion publishes verified volume lock state without querying on each le
 	client.volumeLock = true
 	await state.actions.refresh.callback()
 	assert.equal(state.values.volume_lock_enabled, 1)
+})
+
+test('Config labels follow the reported names while dropdown options keep their saved slot IDs', async (t) => {
+	const { instance, clients, state } = fixture(t, [{ profileNames: ['Combined', 'Mixer', 'GMeet', ''] }])
+	await instance.init({ host: '192.0.2.1', pollMs: 500 })
+	await waitFor(() => state.values.config_3_label === 'Config 3 (GMeet)', 'Config names were not published')
+	const [client] = clients
+	const choices = state.actions.profile.options[0].choices
+	assert.deepEqual(choices, [
+		{ id: 1, label: 'Config 1 (Combined)' },
+		{ id: 2, label: 'Config 2 (Mixer)' },
+		{ id: 3, label: 'Config 3 (GMeet)' },
+		{ id: 4, label: 'Config 4' },
+	])
+	assert.deepEqual(state.feedbacks.profile.options[0].choices, choices)
+	assert.equal(state.presets.profile_3.name, 'Config 3 (GMeet)')
+	assert.equal(state.presets.profile_3.style.text, '$(self:config_3_label)')
+	assert.equal(state.presets.profile_3.steps[0].down[0].options.profile, 3)
+	await waitFor(() => client.calls.levels > 1, 'Level polling did not continue')
+	assert.equal(client.calls.names, 1)
+	client.profileNames = [null, null, 'Meeting', '']
+	await state.actions.refresh.callback()
+	assert.equal(state.values.config_3_label, 'Config 3 (Meeting)')
+	assert.equal(state.values.config_2_label, 'Config 2 (Mixer)')
+	const definitions = state.actions
+	await state.actions.refresh.callback()
+	assert.equal(state.actions, definitions)
+	await instance.configUpdated({ host: '' })
+	assert.equal(state.values.config_3_label, 'Config 3')
 })
 
 test('Destroy cancels a scheduled socket reopen', async (t) => {

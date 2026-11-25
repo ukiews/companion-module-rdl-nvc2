@@ -1,4 +1,5 @@
 const MUTE = 64
+const PROFILE_NUMBERS = [1, 2, 3, 4]
 const VOLUME_LOCK_PROPERTY = 0x0300
 const QUERY_PROPERTIES = 0x0104
 const SET_PROPERTY = 0x0105
@@ -13,18 +14,59 @@ function setVolumeLock(enabled) {
 }
 
 function selectProfile(profile) {
-	if (!Number.isInteger(profile) || profile < 1 || profile > 4) throw new Error('Profile must be 1 to 4')
+	if (!PROFILE_NUMBERS.includes(profile)) throw new Error('Profile must be 1 to 4')
 	return buildV2(0x0500, Buffer.from([profile - 1]))
 }
+
+function buildProfileNamesQuery(firmware) {
+	const [major, minor, patch] = firmware.split('.').map(Number)
+	// RDL reports both 0.3.00 and 3.x-style versions. The 2.x firmware line added the bulk query.
+	const version = major === 0 && patch !== undefined ? minor : major
+	return version >= 2
+		? buildV2(0x050b)
+		: buildV2Frames(PROFILE_NUMBERS.map((profile) => [0x0503, Buffer.from([0, profile - 1])]))
+}
+
 function buildV2(command, data = Buffer.alloc(0)) {
-	const packet = Buffer.alloc(24 + data.length)
+	return buildV2Frames([[command, data]])
+}
+
+function buildV2Frames(frames) {
+	const packet = Buffer.alloc(20 + frames.reduce((length, [, data]) => length + 4 + data.length, 0))
 	packet.write('V2', 0, 'ascii')
-	packet[2] = 1
+	packet[2] = frames.length
 	packet.writeUInt16BE(packet.length, 8)
-	packet.writeUInt16BE(command, 20)
-	packet.writeUInt16BE(4 + data.length, 22)
-	data.copy(packet, 24)
+	let offset = 20
+	for (const [command, data] of frames) {
+		packet.writeUInt16BE(command, offset)
+		packet.writeUInt16BE(4 + data.length, offset + 2)
+		data.copy(packet, offset + 4)
+		offset += 4 + data.length
+	}
 	return packet
+}
+
+function decodeProfileName(profile, data, start, end) {
+	const name = data.toString('utf8', start, end).split('\0', 1)[0].trim()
+	return { type: 'profileName', profile, name }
+}
+
+function parseProfileNames(buffer, start, end, command) {
+	if (command === 0x8503 && end - start === 34 && buffer.readUInt16BE(start) < PROFILE_NUMBERS.length)
+		return [decodeProfileName(buffer.readUInt16BE(start) + 1, buffer, start + 2, end)]
+
+	const names = []
+	for (let offset = start; offset < end;) {
+		if (offset + 4 > end) return []
+		const property = buffer.readUInt16BE(offset)
+		const length = buffer.readUInt16BE(offset + 2)
+		offset += 4
+		if (offset + length > end) return []
+		if (property === 0x0312 && length > 0 && buffer[offset] < PROFILE_NUMBERS.length)
+			names.push(decodeProfileName(buffer[offset] + 1, buffer, offset + 1, offset + length))
+		offset += length
+	}
+	return names
 }
 function parseVolumeLock(buffer, start, end, source) {
 	let enabled = null
@@ -53,9 +95,11 @@ function parseV2Responses(buffer) {
 		const command = buffer.readUInt16BE(offset)
 		const length = buffer.readUInt16BE(offset + 2)
 		if (length < 4 || offset + length > buffer.length) return []
-		if ((command === 0x8500 || command === 0x8501) && length === 5 && buffer[offset + 4] <= 3) {
+		if ((command === 0x8500 || command === 0x8501) && length === 5 && buffer[offset + 4] < PROFILE_NUMBERS.length) {
 			responses.push({ type: 'profile', source: command === 0x8501 ? 'query' : 'set', profile: buffer[offset + 4] + 1 })
 		}
+		if (command === 0x8503 || command === 0x850b)
+			responses.push(...parseProfileNames(buffer, offset + 4, offset + length, command))
 		if (command === (0x8000 | QUERY_PROPERTIES) || command === (0x8000 | SET_PROPERTY)) {
 			const source = command === (0x8000 | QUERY_PROPERTIES) ? 'query' : 'set'
 			const response = parseVolumeLock(buffer, offset + 4, offset + length, source)
@@ -102,11 +146,13 @@ function parseResponse(buffer) {
 }
 module.exports = {
 	MUTE,
+	PROFILE_NUMBERS,
 	QUERY_PROPERTIES,
 	setLevel,
 	selectProfile,
 	setVolumeLock,
 	buildV2,
+	buildProfileNamesQuery,
 	parseResponse,
 	parseResponses,
 }

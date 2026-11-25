@@ -57,6 +57,17 @@ test('Optional volume lock queries do not retry or accept a setter acknowledgmen
 	assert.equal(client.pending.size, 0)
 	client.close()
 })
+test('Config name query collects uniquely indexed replies and returns partial readback on loss', async () => {
+	const client = fixture()
+	const query = client.queryProfileNames('0.1.30')
+	const pending = [...client.pending][0]
+	assert.equal(pending.match({ type: 'profile', source: 'query', profile: 2 }), false)
+	assert.equal(pending.match({ type: 'profileName', profile: 2, name: 'Mix' }), false)
+	assert.equal(pending.match({ type: 'profileName', profile: 2, name: 'Mix' }), false)
+	assert.equal(pending.match({ type: 'profileName', profile: 4, name: '' }), false)
+	assert.deepEqual(await query, [null, 'Mix', null, ''])
+	client.close()
+})
 test('Close cancels an outstanding request and prevents queued writes', async () => {
 	const client = fixture()
 	const request = client.queryLevels()

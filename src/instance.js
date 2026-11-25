@@ -1,12 +1,12 @@
 const { InstanceBase, InstanceStatus, Regex, combineRgb } = require('@companion-module/base')
 const { RdlClient } = require('./client')
 const { VolumeControl } = require('./control')
-const { MUTE } = require('./protocol')
+const { MUTE, PROFILE_NUMBERS } = require('./protocol')
 const WHITE = combineRgb(255, 255, 255)
 const RED = combineRgb(180, 0, 0)
 const LOCK_ENABLED_COLOR = combineRgb(160, 90, 0)
 const LOCK_DISABLED_COLOR = combineRgb(0, 80, 160)
-const LOCK_POLL_MS = 30000
+const SETTINGS_POLL_MS = 30000
 const channels = [
 	{ id: 'both', label: 'Both channels' },
 	{ id: '0', label: 'A / Output 1' },
@@ -69,8 +69,9 @@ class Nvc2Instance extends InstanceBase {
 		this.levels = [null, null]
 		this.connected = false
 		this.profile = null
+		this.profileLabels = PROFILE_NUMBERS.map((profile) => `Config ${profile}`)
 		this.volumeLock = null
-		this.nextLockPoll = 0
+		this.nextSettingsPoll = 0
 		this.model = ''
 		this.firmware = ''
 		this.maintenance = false
@@ -89,7 +90,7 @@ class Nvc2Instance extends InstanceBase {
 		this.connected = false
 		this.profile = null
 		this.volumeLock = null
-		this.nextLockPoll = 0
+		this.nextSettingsPoll = 0
 		this.needsCapabilities = true
 		this.control?.clearRestore()
 		this.updateStatus(InstanceStatus.ConnectionFailure, error.message)
@@ -126,7 +127,7 @@ class Nvc2Instance extends InstanceBase {
 		this.control = new VolumeControl(client)
 		const current = () => generation === this.generation && client === this.client
 		client.on('response', (response) => {
-			if (!current()) return
+			if (!current() || response.type === 'profileName') return
 			if (response.type === 'capabilities') {
 				const wasPaused = this.maintenance
 				const previousModel = this.model
@@ -140,7 +141,7 @@ class Nvc2Instance extends InstanceBase {
 					this.connected = false
 					this.profile = null
 					this.volumeLock = null
-					this.nextLockPoll = 0
+					this.nextSettingsPoll = 0
 					this.control.clearRestore()
 					this.updateStatus(InstanceStatus.Disconnected, 'Bootloader detected: polling paused; refresh after update')
 				} else {
@@ -194,7 +195,6 @@ class Nvc2Instance extends InstanceBase {
 		}
 	}
 	async refreshVolumeLock(client) {
-		this.nextLockPoll = Date.now() + LOCK_POLL_MS
 		try {
 			await client.queryVolumeLock()
 		} catch (error) {
@@ -203,6 +203,28 @@ class Nvc2Instance extends InstanceBase {
 			this.publish()
 			this.log('debug', error.message)
 		}
+	}
+	async refreshProfileNames(client) {
+		try {
+			const names = await client.queryProfileNames(this.firmware)
+			if (client !== this.client || this.maintenance) return
+			const labels = this.profileLabels.map((previous, index) => {
+				const name = names[index]
+				if (name == null) return previous
+				const fallback = `Config ${index + 1}`
+				return name && name !== fallback ? `${fallback} (${name})` : fallback
+			})
+			if (labels.every((label, index) => label === this.profileLabels[index])) return
+			this.profileLabels = labels
+			this.defineControls()
+			this.publish()
+		} catch (error) {
+			if (client === this.client && !this.maintenance) this.log('debug', error.message)
+		}
+	}
+	async refreshSettings(client) {
+		this.nextSettingsPoll = Date.now() + SETTINGS_POLL_MS
+		await Promise.all([this.refreshVolumeLock(client), this.refreshProfileNames(client)])
 	}
 	async pollClient(client, generation) {
 		const current = () => generation === this.generation && client === this.client
@@ -236,7 +258,7 @@ class Nvc2Instance extends InstanceBase {
 						this.publish()
 						this.log('debug', error.message)
 					}
-					if (current() && !this.maintenance && Date.now() >= this.nextLockPoll) await this.refreshVolumeLock(client)
+					if (current() && !this.maintenance && Date.now() >= this.nextSettingsPoll) await this.refreshSettings(client)
 				},
 				{ kind: 'poll' },
 			)
@@ -267,6 +289,7 @@ class Nvc2Instance extends InstanceBase {
 			active_profile: this.connected ? (this.profile ?? '') : '',
 			volume_lock_enabled: this.connected && this.volumeLock != null ? Number(this.volumeLock) : '',
 		}
+		for (const profile of PROFILE_NUMBERS) values[`config_${profile}_label`] = this.profileLabels[profile - 1]
 		for (let i = 0; i < 2; i++) {
 			const level = this.connected ? this.levels[i] : null
 			values[`ch${i + 1}_attenuation`] = level ?? ''
@@ -292,6 +315,7 @@ class Nvc2Instance extends InstanceBase {
 			'active_profile',
 			'last_confirmed_profile',
 			'volume_lock_enabled',
+			...PROFILE_NUMBERS.map((profile) => `config_${profile}_label`),
 		]
 		for (let i = 1; i <= 2; i++) variables.push(`ch${i}_attenuation`, `ch${i}_db`, `ch${i}_muted`, `ch${i}_display`)
 		this.setVariableDefinitions(
@@ -374,7 +398,7 @@ class Nvc2Instance extends InstanceBase {
 							if (this.maintenance) return
 							await client.queryLevels()
 							await client.queryProfile()
-							if (client === this.client && !this.maintenance) await this.refreshVolumeLock(client)
+							if (client === this.client && !this.maintenance) await this.refreshSettings(client)
 						},
 						{ kind: 'maintenance' },
 					)
@@ -393,7 +417,7 @@ class Nvc2Instance extends InstanceBase {
 			id: 'profile',
 			label: 'Saved RDL Config profile',
 			default: 1,
-			choices: [1, 2, 3, 4].map((id) => ({ id, label: `Config ${id}` })),
+			choices: PROFILE_NUMBERS.map((id) => ({ id, label: this.profileLabels[id - 1] })),
 		})
 		actions.profile = {
 			name: 'Select saved RDL Config profile',
@@ -437,7 +461,7 @@ class Nvc2Instance extends InstanceBase {
 				} catch (error) {
 					if (client === this.client && !this.maintenance && client?.ready) {
 						this.volumeLock = null
-						this.nextLockPoll = 0
+						this.nextSettingsPoll = 0
 						this.publish()
 					}
 					this.log(
@@ -499,12 +523,17 @@ class Nvc2Instance extends InstanceBase {
 			},
 		})
 		const presets = {}
-		for (let profile = 1; profile <= 4; profile++)
+		for (const profile of PROFILE_NUMBERS)
 			presets[`profile_${profile}`] = {
 				type: 'simple',
 				category: 'RDL Config profiles',
-				name: `Config ${profile}`,
-				style: { text: `Config ${profile}`, size: '18', color: WHITE, bgcolor: combineRgb(30, 30, 30) },
+				name: this.profileLabels[profile - 1],
+				style: {
+					text: `$(self:config_${profile}_label)`,
+					size: 'auto',
+					color: WHITE,
+					bgcolor: combineRgb(30, 30, 30),
+				},
 				steps: [{ down: [{ actionId: 'profile', options: { profile } }], up: [] }],
 				feedbacks: [{ feedbackId: 'profile', options: { profile }, style: { bgcolor: combineRgb(0, 80, 160) } }],
 			}
