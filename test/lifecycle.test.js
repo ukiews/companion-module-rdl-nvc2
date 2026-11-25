@@ -19,7 +19,8 @@ class FakeClient extends EventEmitter {
 		this.options = options
 		this.ready = false
 		this.closed = false
-		this.calls = { open: 0, close: 0, capabilities: 0, levels: 0, profile: 0 }
+		this.calls = { open: 0, close: 0, capabilities: 0, levels: 0, profile: 0, lock: 0 }
+		this.volumeLock = spec.volumeLock ?? null
 		this.tail = Promise.resolve()
 	}
 	async open() {
@@ -64,6 +65,20 @@ class FakeClient extends EventEmitter {
 		const result = { type: 'profile', source: 'query', profile: 2 }
 		this.emit('response', result)
 		return result
+	}
+	async queryVolumeLock() {
+		this.calls.lock++
+		const result = { type: 'volumeLock', source: 'query', enabled: this.volumeLock }
+		this.emit('response', result)
+		return result
+	}
+	async request(command, match) {
+		assert.equal(command.readUInt16BE(20), 0x0105)
+		this.volumeLock = command[28] === 1
+		const response = { type: 'volumeLock', source: 'set', enabled: this.volumeLock }
+		assert.equal(match(response), true)
+		this.emit('response', response)
+		return response
 	}
 }
 
@@ -122,6 +137,24 @@ test('A transient socket-open failure retries and connects without saving the co
 	assert.equal(clients[0].closed, true)
 	assert.equal(clients[1].calls.capabilities, 1)
 	assert.equal(state.values.ch1_attenuation, 31)
+})
+
+test('Companion publishes verified volume lock state without querying on each level poll', async (t) => {
+	const { instance, clients, state } = fixture(t, [{ volumeLock: false }])
+	await instance.init({ host: '192.0.2.1', pollMs: 500 })
+	await waitFor(() => state.values.volume_lock_enabled === 0, 'The initial lock setting was not published')
+	const [client] = clients
+	assert.equal(client.calls.lock, 1)
+	await waitFor(() => client.calls.levels > 1, 'Level polling did not continue')
+	assert.equal(client.calls.lock, 1)
+	await state.actions.volume_lock.callback({ options: { mode: 'enable' } })
+	assert.equal(state.values.volume_lock_enabled, 1)
+	await state.actions.volume_lock.callback({ options: { mode: 'disable' } })
+	assert.equal(state.values.volume_lock_enabled, 0)
+	assert.equal(client.calls.lock, 5)
+	client.volumeLock = true
+	await state.actions.refresh.callback()
+	assert.equal(state.values.volume_lock_enabled, 1)
 })
 
 test('Destroy cancels a scheduled socket reopen', async (t) => {

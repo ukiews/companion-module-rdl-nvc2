@@ -41,6 +41,22 @@ test('Lost replies retry once, then fail and clean up', async () => {
 	assert.equal(client.pending.size, 0)
 	client.close()
 })
+test('Optional volume lock queries do not retry or accept a setter acknowledgment', async () => {
+	const client = fixture()
+	let sends = 0
+	client.socket.send = (buffer, port, host, callback) => {
+		assert.equal(buffer.readUInt16BE(20), 0x0104)
+		sends++
+		callback()
+	}
+	const request = client.queryVolumeLock()
+	const pending = [...client.pending][0]
+	assert.equal(pending.match({ type: 'volumeLock', source: 'set', enabled: true }), false)
+	await assert.rejects(request, /Timeout/)
+	assert.equal(sends, 1)
+	assert.equal(client.pending.size, 0)
+	client.close()
+})
 test('Close cancels an outstanding request and prevents queued writes', async () => {
 	const client = fixture()
 	const request = client.queryLevels()

@@ -2,7 +2,7 @@ const dgram = require('node:dgram')
 const { EventEmitter } = require('node:events')
 const { networkInterfaces } = require('node:os')
 const { isIPv4 } = require('node:net')
-const { parseResponses, buildV2 } = require('./protocol')
+const { parseResponses, buildV2, QUERY_PROPERTIES } = require('./protocol')
 const MAX_QUEUED_OPERATIONS = 32
 const queueError = (message, code) => Object.assign(new Error(message), { code })
 
@@ -89,7 +89,7 @@ class RdlClient extends EventEmitter {
 			throw error
 		})
 	}
-	attempt(command, match) {
+	attempt(command, match, timeout = this.timeout) {
 		if (this.closed || !this.ready) return Promise.reject(new Error('RDL socket is not ready'))
 		if (this.paused && command !== 'QC')
 			return Promise.reject(
@@ -110,7 +110,7 @@ class RdlClient extends EventEmitter {
 					else resolve(response)
 				},
 			}
-			const timer = setTimeout(() => pending.finish(new Error(`Timeout waiting for ${description}`)), this.timeout)
+			const timer = setTimeout(() => pending.finish(new Error(`Timeout waiting for ${description}`)), timeout)
 			this.pending.add(pending)
 			this.socket.send(Buffer.from(command, 'ascii'), 18700, this.host, (error) => {
 				if (error) pending.finish(error)
@@ -203,6 +203,14 @@ class RdlClient extends EventEmitter {
 	}
 	queryProfile() {
 		return this.request(buildV2(0x0501), (r) => r.type === 'profile' && r.source === 'query')
+	}
+	queryVolumeLock() {
+		// Some firmware does not report this optional setting. Keep its query from delaying volume actions.
+		return this.attempt(
+			buildV2(QUERY_PROPERTIES),
+			(r) => r.type === 'volumeLock' && r.source === 'query',
+			Math.min(this.timeout, 500),
+		)
 	}
 	close() {
 		this.closed = true

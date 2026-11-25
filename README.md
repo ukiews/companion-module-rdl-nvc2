@@ -4,7 +4,7 @@ Control an RDL D-NVC2 over its control network: independent or linked output att
 
 ## Install
 
-Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-1.0.1.tgz` from the [latest module release](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/v1.0.1), open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. For an existing connection, select module version 1.0.1 after importing. This is a custom module; it is not yet in the Bitfocus module catalog.
+Requires Companion 5 or newer with the Node 22 module runtime and module API 2 support. Download `rdl-nvc2-1.0.2.tgz` from the [module release](https://github.com/ukiews/companion-module-rdl-nvc2/releases/tag/v1.0.2), open Companion's **Modules** page, and use **Import module package**. Add the **RDL D-NVC2** connection, enter your device's IPv4 address, and drag buttons from **Presets** to your page. For an existing connection, select module version 1.0.2 after importing. This is a custom module; it is not yet in the Bitfocus module catalog.
 
 On a computer with several network interfaces, select the IPv4 address of the local interface connected to the device. Leaving the interface blank joins multicast on every available IPv4 interface. The device address and local interface address are different settings.
 
@@ -14,7 +14,7 @@ Commands go to the device on UDP 18700. Replies arrive at multicast `239.254.50.
 
 Only replies whose source IPv4 matches the configured device are processed. Shared UDP binding supports other RDL applications listening on the same port. Prefer one Companion connection per device, because concurrent controllers can still interleave changes. Each request retries once on timeout. Socket failures reopen automatically with a retry delay capped at 10 seconds; three consecutive failed level polls also reopen the socket. UDP acknowledgments have no transaction IDs, so simultaneous external control cannot be made atomic.
 
-The default polling interval is one second after the previous poll completes, configurable from 500 to 10,000 ms. A healthy cycle queries levels and the active Config; capabilities are queried at startup and after a connection failure. Unchanged replies do not republish variables or reevaluate button feedback. There are no additional background scan timers or runtime dependencies.
+The default polling interval is one second after the previous poll completes, configurable from 500 to 10,000 ms. A healthy cycle queries levels and the active Config; capabilities are queried at startup and after a connection failure. The startup poll and subsequent polls about 30 seconds apart also read the physical volume lock setting. Unchanged replies do not republish variables or reevaluate button feedback. There are no additional background scan timers or runtime dependencies.
 
 The action queue holds at most 32 waiting operations. Volume adjustments expire after one second and waiting adjustments are discarded on a request timeout or a subsequent Mute/Toggle action. Actions take priority over waiting polls, while explicit state changes retain their order. An operation already in progress must finish or time out before the next one can run.
 
@@ -38,6 +38,12 @@ Config selection uses binary RDL V2 zone set `0x0500` with a zero-based profile 
 
 Display/menu commands `DISP0`–`DISP3` do not select Config profiles. The module uses V2 Config commands and independently queries actual state. Existing development-build profile actions, option values, presets, feedback IDs, and `last_confirmed_profile` remain compatible.
 
+## Physical volume lock
+
+Use **Set physical volume lock** with **Enable** or **Disable** to change the knob's automatic front-panel volume lock. The device controls when it asks for its existing PIN. **Physical volume lock is enabled** and `volume_lock_enabled` report the setting, independent of whether the knob is currently showing the PIN prompt.
+
+The module changes this setting only if the device reports support, as verified by read-only queries on `0.1.30_custom`. It reads back every change. Use **Refresh device status** to check the setting on demand.
+
 ## Variables
 
 | Variable                             | Meaning                                                    |
@@ -50,6 +56,7 @@ Display/menu commands `DISP0`–`DISP3` do not select Config profiles. The modul
 | `ch1_display`, `ch2_display`         | Human-readable level or MUTE                               |
 | `active_profile`                     | Current Config 1–4 from device readback; blank if unknown  |
 | `last_confirmed_profile`             | Compatibility alias for `active_profile`                   |
+| `volume_lock_enabled`                | 1 enabled, 0 disabled, blank if unavailable                |
 
 Level variables become blank (display variables become Unknown) when disconnected. Feedbacks cover mute, attenuation thresholds, connection state, and the queried active Config. The Both presets show channel A's level; use separate A/B buttons or both variables when channels have different levels.
 

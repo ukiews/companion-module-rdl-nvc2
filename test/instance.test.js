@@ -52,16 +52,21 @@ test('Live levels and disconnection produce honest variables and feedback', asyn
 	instance.connected = true
 	instance.levels = [63, 64]
 	instance.profile = 3
+	instance.volumeLock = true
 	instance.publish()
 	assert.equal(state.values.ch1_db, -63)
 	assert.equal(state.values.ch2_db, '-inf')
 	assert.equal(state.values.ch1_muted, 0)
 	assert.equal(state.values.ch2_muted, 1)
 	assert.equal(state.feedbacks.profile.callback({ options: { profile: 3 } }), true)
+	assert.equal(state.values.volume_lock_enabled, 1)
+	assert.equal(state.feedbacks.volume_lock_enabled.callback(), true)
 	instance.connected = false
 	instance.publish()
 	assert.equal(state.values.last_confirmed_profile, '')
 	assert.equal(state.values.ch2_attenuation, '')
+	assert.equal(state.values.volume_lock_enabled, '')
+	assert.equal(state.feedbacks.volume_lock_enabled.callback(), false)
 	assert.equal(state.feedbacks.muted.callback({ options: { channel: 'both' } }), false)
 	await instance.destroy()
 })

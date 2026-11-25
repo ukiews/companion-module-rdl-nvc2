@@ -4,6 +4,7 @@ const { VolumeControl } = require('./control')
 const { MUTE } = require('./protocol')
 const WHITE = combineRgb(255, 255, 255)
 const RED = combineRgb(180, 0, 0)
+const LOCK_POLL_MS = 30000
 const channels = [
 	{ id: 'both', label: 'Both channels' },
 	{ id: '0', label: 'A / Output 1' },
@@ -66,6 +67,8 @@ class Nvc2Instance extends InstanceBase {
 		this.levels = [null, null]
 		this.connected = false
 		this.profile = null
+		this.volumeLock = null
+		this.nextLockPoll = 0
 		this.model = ''
 		this.firmware = ''
 		this.maintenance = false
@@ -83,6 +86,8 @@ class Nvc2Instance extends InstanceBase {
 	unavailable(error) {
 		this.connected = false
 		this.profile = null
+		this.volumeLock = null
+		this.nextLockPoll = 0
 		this.needsCapabilities = true
 		this.control?.clearRestore()
 		this.updateStatus(InstanceStatus.ConnectionFailure, error.message)
@@ -132,6 +137,8 @@ class Nvc2Instance extends InstanceBase {
 					clearTimeout(this.pollTimer)
 					this.connected = false
 					this.profile = null
+					this.volumeLock = null
+					this.nextLockPoll = 0
 					this.control.clearRestore()
 					this.updateStatus(InstanceStatus.Disconnected, 'Bootloader detected: polling paused; refresh after update')
 				} else {
@@ -148,6 +155,8 @@ class Nvc2Instance extends InstanceBase {
 			}
 			if (response.type === 'profile' && response.source === 'query' && !this.maintenance)
 				this.profile = response.profile
+			if (response.type === 'volumeLock' && response.source === 'query' && !this.maintenance)
+				this.volumeLock = response.enabled
 			this.publish()
 		})
 		client.on('warning', (message) => {
@@ -182,6 +191,17 @@ class Nvc2Instance extends InstanceBase {
 			this.scheduleReconnect(config, generation)
 		}
 	}
+	async refreshVolumeLock(client) {
+		this.nextLockPoll = Date.now() + LOCK_POLL_MS
+		try {
+			await client.queryVolumeLock()
+		} catch (error) {
+			if (client !== this.client || this.maintenance) return
+			this.volumeLock = null
+			this.publish()
+			this.log('debug', error.message)
+		}
+	}
 	async pollClient(client, generation) {
 		const current = () => generation === this.generation && client === this.client
 		if (!current() || this.maintenance) return
@@ -214,6 +234,7 @@ class Nvc2Instance extends InstanceBase {
 						this.publish()
 						this.log('debug', error.message)
 					}
+					if (current() && !this.maintenance && Date.now() >= this.nextLockPoll) await this.refreshVolumeLock(client)
 				},
 				{ kind: 'poll' },
 			)
@@ -242,6 +263,7 @@ class Nvc2Instance extends InstanceBase {
 			firmware: this.firmware,
 			last_confirmed_profile: this.connected ? (this.profile ?? '') : '',
 			active_profile: this.connected ? (this.profile ?? '') : '',
+			volume_lock_enabled: this.connected && this.volumeLock != null ? Number(this.volumeLock) : '',
 		}
 		for (let i = 0; i < 2; i++) {
 			const level = this.connected ? this.levels[i] : null
@@ -256,10 +278,17 @@ class Nvc2Instance extends InstanceBase {
 		if (!Object.keys(changed).length) return
 		this.lastPublished = values
 		this.setVariableValues(changed)
-		this.checkFeedbacks('muted', 'level', 'connected', 'profile')
+		this.checkFeedbacks('muted', 'level', 'connected', 'profile', 'volume_lock_enabled')
 	}
 	defineControls() {
-		const variables = ['connected', 'model', 'firmware', 'active_profile', 'last_confirmed_profile']
+		const variables = [
+			'connected',
+			'model',
+			'firmware',
+			'active_profile',
+			'last_confirmed_profile',
+			'volume_lock_enabled',
+		]
 		for (let i = 1; i <= 2; i++) variables.push(`ch${i}_attenuation`, `ch${i}_db`, `ch${i}_muted`, `ch${i}_display`)
 		this.setVariableDefinitions(
 			Object.fromEntries(variables.map((variableId) => [variableId, { name: variableId.replaceAll('_', ' ') }])),
@@ -314,6 +343,7 @@ class Nvc2Instance extends InstanceBase {
 							if (this.maintenance) return
 							await client.queryLevels()
 							await client.queryProfile()
+							if (client === this.client && !this.maintenance) await this.refreshVolumeLock(client)
 						},
 						{ kind: 'maintenance' },
 					)
@@ -347,6 +377,40 @@ class Nvc2Instance extends InstanceBase {
 						['RDL_ACTION_EXPIRED', 'RDL_ACTION_CANCELLED', 'RDL_QUEUE_FULL', 'RDL_MAINTENANCE'].includes(error.code)
 							? 'debug'
 							: 'error',
+						error.message,
+					)
+				}
+			},
+		}
+		actions.volume_lock = {
+			name: 'Set physical volume lock',
+			options: [
+				{
+					type: 'dropdown',
+					id: 'mode',
+					label: 'Automatic volume lock',
+					default: 'enable',
+					choices: [
+						{ id: 'enable', label: 'Enable' },
+						{ id: 'disable', label: 'Disable' },
+					],
+				},
+			],
+			callback: async ({ options: { mode } }) => {
+				const client = this.client
+				try {
+					if (this.maintenance) throw new Error('Polling and control are paused while the bootloader is active')
+					if (!this.control || !client?.ready) throw new Error('Device is not connected')
+					if (mode !== 'enable' && mode !== 'disable') throw new Error('Invalid physical volume lock option')
+					await this.control.setVolumeLock(mode === 'enable')
+				} catch (error) {
+					if (client === this.client && !this.maintenance && client?.ready) {
+						this.volumeLock = null
+						this.nextLockPoll = 0
+						this.publish()
+					}
+					this.log(
+						['RDL_ACTION_CANCELLED', 'RDL_QUEUE_FULL', 'RDL_MAINTENANCE'].includes(error.code) ? 'debug' : 'error',
 						error.message,
 					)
 				}
@@ -387,6 +451,13 @@ class Nvc2Instance extends InstanceBase {
 				defaultStyle: { color: WHITE, bgcolor: combineRgb(0, 80, 160) },
 				options: [profileOption()],
 				callback: (event) => this.connected && this.profile === Number(event.options.profile),
+			},
+			volume_lock_enabled: {
+				type: 'boolean',
+				name: 'Physical volume lock is enabled',
+				defaultStyle: { color: WHITE, bgcolor: combineRgb(160, 90, 0) },
+				options: [],
+				callback: () => this.connected && this.volumeLock === true,
 			},
 		})
 		const presets = {}

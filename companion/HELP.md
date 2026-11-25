@@ -8,6 +8,8 @@ Mute restore remembers each channel's previous module-issued mute level. Restore
 
 Config selection chooses an existing RDL Console knob/channel configuration, not a volume scene. Configure profiles in RDL Console. The module uses binary V2 Config set/get, verifies each selection with an independent device query, and polls the current Config. Profile buttons and `active_profile` show actual queried state; `last_confirmed_profile` remains as a compatibility alias. Existing development-build buttons retain their action IDs and options.
 
+**Set physical volume lock** enables or disables the knob's automatic front-panel volume lock on firmware that reports the setting. **Physical volume lock is enabled** feedback and `volume_lock_enabled` show the confirmed setting. The device manages the inactivity timer and PIN prompt. The module reads the setting at startup, about every 30 seconds, and when you use **Refresh device status**.
+
 The module polls levels and the active Config once per second by default, waiting for the previous cycle to finish. Unchanged replies do not republish variables or reevaluate feedback. Socket failures retry automatically. The queue is bounded; volume adjustments expire after one second, and waiting adjustments are discarded on a timeout or Mute/Toggle. An operation already in progress finishes before the next action. Disconnected level values are blank/Unknown. Both-channel presets display channel A; use individual presets to see different A/B levels.
 
 Disable the connection before a firmware update. A received bootloader identity pauses polling and controls. After the update, use Refresh device status to check identity and resume, or disable and re-enable the connection.

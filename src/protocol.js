@@ -1,4 +1,17 @@
 const MUTE = 64
+const VOLUME_LOCK_PROPERTY = 0x0300
+const QUERY_PROPERTIES = 0x0104
+const SET_PROPERTY = 0x0105
+
+function setVolumeLock(enabled) {
+	if (typeof enabled !== 'boolean') throw new TypeError('Volume lock must be enabled or disabled')
+	const data = Buffer.alloc(5)
+	data.writeUInt16BE(VOLUME_LOCK_PROPERTY, 0)
+	data.writeUInt16BE(1, 2)
+	data[4] = Number(enabled)
+	return buildV2(SET_PROPERTY, data)
+}
+
 function selectProfile(profile) {
 	if (!Number.isInteger(profile) || profile < 1 || profile > 4) throw new Error('Profile must be 1 to 4')
 	return buildV2(0x0500, Buffer.from([profile - 1]))
@@ -13,6 +26,24 @@ function buildV2(command, data = Buffer.alloc(0)) {
 	data.copy(packet, 24)
 	return packet
 }
+function parseVolumeLock(buffer, start, end, source) {
+	let enabled = null
+	for (let offset = start; offset < end;) {
+		if (offset + 4 > end) return null
+		const id = buffer.readUInt16BE(offset)
+		const length = buffer.readUInt16BE(offset + 2)
+		offset += 4
+		if (offset + length > end) return null
+		if (id === VOLUME_LOCK_PROPERTY) {
+			if (enabled !== null || length !== 1 || buffer[offset] > 1) return null
+			enabled = buffer[offset] === 1
+		}
+		offset += length
+	}
+	if (source === 'set' && enabled === null) return null
+	return { type: 'volumeLock', source, enabled }
+}
+
 function parseV2Responses(buffer) {
 	if (buffer.length < 24 || buffer.readUInt16BE(8) !== buffer.length) return []
 	const responses = []
@@ -24,6 +55,11 @@ function parseV2Responses(buffer) {
 		if (length < 4 || offset + length > buffer.length) return []
 		if ((command === 0x8500 || command === 0x8501) && length === 5 && buffer[offset + 4] <= 3) {
 			responses.push({ type: 'profile', source: command === 0x8501 ? 'query' : 'set', profile: buffer[offset + 4] + 1 })
+		}
+		if (command === (0x8000 | QUERY_PROPERTIES) || command === (0x8000 | SET_PROPERTY)) {
+			const source = command === (0x8000 | QUERY_PROPERTIES) ? 'query' : 'set'
+			const response = parseVolumeLock(buffer, offset + 4, offset + length, source)
+			if (response) responses.push(response)
 		}
 		offset += length
 	}
@@ -64,4 +100,13 @@ function parseResponse(buffer) {
 		return { type: 'set', channel: Number(text[5]), attenuation: Number(text.slice(6)) }
 	return null
 }
-module.exports = { MUTE, setLevel, selectProfile, buildV2, parseResponse, parseResponses }
+module.exports = {
+	MUTE,
+	QUERY_PROPERTIES,
+	setLevel,
+	selectProfile,
+	setVolumeLock,
+	buildV2,
+	parseResponse,
+	parseResponses,
+}

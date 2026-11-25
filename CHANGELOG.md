@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.2
+
+- Enable or disable the knob's automatic physical volume lock on supported firmware.
+- Confirm changes by reading the device setting and expose the result as button feedback and a variable.
+
+## 1.0.1
+
+- Hardened reconnects, volume action queuing, and mute restore.
+
 ## 1.0.0 — Initial release
 
 - Independent and linked A/B output attenuation and volume adjustments.

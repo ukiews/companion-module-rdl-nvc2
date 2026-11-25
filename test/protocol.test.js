@@ -1,6 +1,24 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { parseResponse, parseResponses, setLevel, selectProfile, buildV2 } = require('../src/protocol')
+const { parseResponse, parseResponses, setLevel, selectProfile, setVolumeLock, buildV2 } = require('../src/protocol')
+test('Volume lock writes only the one-byte physical lock property', () => {
+	assert.equal(setVolumeLock(true).toString('hex'), '5632010000000000001d00000000000000000000010500090300000101')
+	assert.equal(setVolumeLock(false)[28], 0)
+	assert.throws(() => setVolumeLock('false'), /enabled or disabled/)
+})
+test('Volume lock distinguishes reports, setter acknowledgments, missing properties and malformed replies', () => {
+	const packet = (cmd, hex) => buildV2(cmd, Buffer.from(hex, 'hex'))
+	assert.deepEqual(parseResponses(packet(0x8104, '010500020f0f03000001000301000101')), [
+		{ type: 'volumeLock', source: 'query', enabled: false },
+	])
+	assert.deepEqual(parseResponses(packet(0x8105, '0300000101')), [{ type: 'volumeLock', source: 'set', enabled: true }])
+	assert.deepEqual(parseResponses(packet(0x8104, '0301000101')), [
+		{ type: 'volumeLock', source: 'query', enabled: null },
+	])
+	assert.deepEqual(parseResponses(packet(0x8105, '0301000101')), [])
+	for (const malformed of ['0300000102', '0300000200', '03000001000300', '03000001000300000101'])
+		assert.deepEqual(parseResponses(packet(0x8104, malformed)), [])
+})
 test('Config selection uses V2 zone set, not the display menu command', () => {
 	assert.equal(selectProfile(2).toString('hex'), '56320100000000000019000000000000000000000500000501')
 	assert.equal(buildV2(0x0501).toString('hex'), '563201000000000000180000000000000000000005010004')

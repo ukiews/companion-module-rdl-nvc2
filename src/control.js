@@ -1,4 +1,4 @@
-const { MUTE, setLevel, selectProfile } = require('./protocol')
+const { MUTE, setLevel, selectProfile, setVolumeLock } = require('./protocol')
 class VolumeControl {
 	constructor(client) {
 		this.client = client
@@ -43,6 +43,30 @@ class VolumeControl {
 			const actual = await this.client.queryProfile()
 			if (actual.profile !== profile)
 				throw new Error(`Config readback mismatch: selected ${profile}, device reports ${actual.profile}`)
+			return actual
+		})
+	}
+	setVolumeLock(enabled) {
+		const command = setVolumeLock(enabled)
+		return this.client.serial(async () => {
+			const before = await this.client.queryVolumeLock()
+			if (typeof before.enabled !== 'boolean')
+				throw new Error('The device does not report support for physical volume lock')
+			if (before.enabled === enabled) return before
+			try {
+				await this.client.request(
+					command,
+					(r) => r.type === 'volumeLock' && r.source === 'set' && r.enabled === enabled,
+				)
+			} catch (error) {
+				if (!error.message.startsWith('Timeout waiting')) throw error
+				const actual = await this.client.queryVolumeLock()
+				if (actual.enabled === enabled) return actual
+				throw error
+			}
+			const actual = await this.client.queryVolumeLock()
+			if (actual.enabled !== enabled)
+				throw new Error('Device did not confirm the requested physical volume lock setting')
 			return actual
 		})
 	}
