@@ -1,6 +1,6 @@
 # RDL D-NVC2
 
-Enter the device's IPv4 address. Commands use UDP 18700 and replies use multicast 239.254.50.0:9000. Select a local interface IPv4 if automatic multicast membership does not work. Allow inbound UDP and multicast on your control network.
+Enter the device's IPv4 address. Commands use UDP 18700 and replies default to UDP 9000, either by multicast to 239.254.50.0 or by unicast to the Companion host. Select a local interface IPv4 if automatic multicast membership does not work. Allow inbound UDP replies and enable multicast on the control network for knobs that use it.
 
 Use Presets for volume up/down, mute toggle, and Config 1–4 selection. A = Output 1, B = Output 2. Positive volume adjustments are louder and higher attenuation is quieter. In **Set attenuation**, choose **Attenuation (dB)** for 0–63 dB or **Volume (%)** for an absolute 0–100%. In percent mode, 0% mutes, 1% is the quietest unmuted level, and 100% is full volume.
 

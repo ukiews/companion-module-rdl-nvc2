@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6
+
+- Fixed intermittent disconnects on Linux when multiple unicast knobs send replies to the same UDP port. Multicast device replies remain supported.
+
 ## 1.0.5
 
 - Config selectors and newly added Config preset buttons show the names reported by the knob, such as **Config 3 (GMeet)**.

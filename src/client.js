@@ -3,6 +3,7 @@ const { EventEmitter } = require('node:events')
 const { networkInterfaces } = require('node:os')
 const { isIPv4 } = require('node:net')
 const { parseResponses, buildV2, buildProfileNamesQuery, PROFILE_NUMBERS, QUERY_PROPERTIES } = require('./protocol')
+const CONTROL_PORT = 18700
 const MAX_QUEUED_OPERATIONS = 32
 const queueError = (message, code) => Object.assign(new Error(message), { code })
 
@@ -24,9 +25,25 @@ class RdlClient extends EventEmitter {
 		this.drainScheduled = false
 	}
 	async open() {
+		if (this.closed) throw new Error('RDL client closed')
 		this.socket = dgram.createSocket({ type: 'udp4', reuseAddr: true })
-		this.socket.on('message', (data, remote) => {
-			if (remote.address !== this.host) return
+		try {
+			await this.openSocket(this.socket, false)
+			this.joinMulticast()
+			if (process.platform === 'linux') {
+				// Linux prioritizes the connected socket for unicast replies from this device.
+				this.unicastSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true })
+				await this.openSocket(this.unicastSocket, true)
+			}
+			this.ready = true
+		} catch (error) {
+			this.close()
+			throw error
+		}
+	}
+	openSocket(socket, unicast) {
+		socket.on('message', (data, remote) => {
+			if (this.closed || remote.address !== this.host) return
 			for (const response of parseResponses(data)) {
 				this.emit('response', response)
 				for (const pending of [...this.pending]) {
@@ -34,42 +51,46 @@ class RdlClient extends EventEmitter {
 				}
 			}
 		})
-		this.socket.on('error', (error) => {
+		socket.on('error', (error) => {
 			for (const pending of [...this.pending]) pending.finish(error)
 			this.emit('fault', error)
 		})
-		await new Promise((resolve, reject) => {
-			this.socket.once('error', reject)
-			this.socket.bind(this.port, '0.0.0.0', () => {
-				this.socket.removeListener('error', reject)
-				try {
-					const addresses = this.localAddress
-						? [this.localAddress]
-						: [
-								...new Set(
-									Object.values(networkInterfaces())
-										.flat()
-										.filter((i) => i && i.family === 'IPv4' && !i.internal)
-										.map((i) => i.address),
-								),
-							]
-					let joined = 0
-					for (const address of addresses) {
-						try {
-							this.socket.addMembership(this.group, address)
-							joined++
-						} catch (error) {
-							this.emit('warning', `Cannot join multicast on ${address}: ${error.message}`)
-						}
-					}
-					if (!joined) throw new Error('Could not join multicast group on any network interface')
-					this.ready = true
-					resolve()
-				} catch (error) {
-					reject(error)
-				}
+		return new Promise((resolve, reject) => {
+			const finish = (error) => {
+				socket.off('error', finish)
+				socket.off('close', onClose)
+				if (error) reject(error)
+				else resolve()
+			}
+			const onClose = () => finish(new Error('RDL client closed'))
+			socket.once('error', finish)
+			socket.once('close', onClose)
+			socket.bind(this.port, '0.0.0.0', () => {
+				if (this.closed) return onClose()
+				if (unicast) socket.connect(CONTROL_PORT, this.host, finish)
+				else finish()
 			})
 		})
+	}
+	joinMulticast() {
+		const addresses = this.localAddress
+			? [this.localAddress]
+			: new Set(
+					Object.values(networkInterfaces())
+						.flat()
+						.filter((i) => i && i.family === 'IPv4' && !i.internal)
+						.map((i) => i.address),
+				)
+		let joined = 0
+		for (const address of addresses) {
+			try {
+				this.socket.addMembership(this.group, address)
+				joined++
+			} catch (error) {
+				this.emit('warning', `Cannot join multicast on ${address}: ${error.message}`)
+			}
+		}
+		if (!joined) throw new Error('Could not join multicast group on any network interface')
 	}
 	request(command, match) {
 		if (this.closed || !this.ready) return Promise.reject(new Error('RDL socket is not ready'))
@@ -112,7 +133,7 @@ class RdlClient extends EventEmitter {
 			}
 			const timer = setTimeout(() => pending.finish(new Error(`Timeout waiting for ${description}`)), timeout)
 			this.pending.add(pending)
-			this.socket.send(Buffer.from(command, 'ascii'), 18700, this.host, (error) => {
+			this.socket.send(Buffer.from(command, 'ascii'), CONTROL_PORT, this.host, (error) => {
 				if (error) pending.finish(error)
 			})
 		})
@@ -236,9 +257,9 @@ class RdlClient extends EventEmitter {
 		for (const entry of this.queue.splice(0)) entry.reject(new Error('RDL client closed'))
 		this.activeOperation?.reject(new Error('RDL client closed'))
 		for (const pending of [...this.pending]) pending.finish(new Error('RDL client closed'))
-		if (this.socket) {
+		for (const socket of [this.socket, this.unicastSocket]) {
 			try {
-				this.socket.close()
+				socket?.close()
 			} catch {}
 		}
 	}

@@ -1,6 +1,67 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
+const dgram = require('node:dgram')
+const { once } = require('node:events')
 const { RdlClient } = require('../src/client')
+
+test(
+	'Two knobs can share the response port with unicast and multicast on Linux',
+	{ skip: process.platform !== 'linux' },
+	async (t) => {
+		const bind = async (port, host) => {
+			const socket = dgram.createSocket('udp4')
+			t.after(() => socket.close())
+			socket.bind(port, host)
+			await once(socket, 'listening')
+			return socket
+		}
+		const group = '239.254.50.0'
+		const portProbe = dgram.createSocket('udp4')
+		portProbe.bind(0, '127.0.0.1')
+		await once(portProbe, 'listening')
+		const port = portProbe.address().port
+		const portClosed = once(portProbe, 'close')
+		portProbe.close()
+		await portClosed
+
+		const knobs = [
+			{ host: '127.0.0.2', reply: 'ACKQLC1-031C2-064', levels: [31, 64] },
+			{ host: '127.0.0.3', reply: 'ACKQLC1-010C2-023', levels: [10, 23] },
+		]
+		const clients = []
+		for (const knob of knobs) {
+			const responder = await bind(18700, knob.host)
+			responder.setMulticastInterface('127.0.0.1')
+			responder.on('message', (packet, sender) => {
+				assert.equal(packet.toString(), 'QL')
+				assert.equal(sender.port, port)
+				responder.send(knob.reply, port, knob.multicast ? group : sender.address)
+			})
+			const client = new RdlClient({ host: knob.host, group, port, localAddress: '127.0.0.1', timeout: 250 })
+			t.after(() => client.close())
+			await client.open()
+			clients.push(client)
+		}
+
+		const verifyLevels = async () => {
+			const replies = await Promise.all(clients.map((client) => client.queryLevels()))
+			assert.deepEqual(
+				replies.map((reply) => reply.levels),
+				knobs.map((knob) => knob.levels),
+			)
+		}
+		await t.test('both using unicast', verifyLevels)
+		await t.test('one using multicast and one using unicast', async () => {
+			knobs[0].multicast = true
+			await verifyLevels()
+		})
+		await t.test('both using multicast', async () => {
+			knobs[1].multicast = true
+			await verifyLevels()
+		})
+	},
+)
+
 function fixture() {
 	const client = new RdlClient({ host: '192.0.2.1', timeout: 10 })
 	client.ready = true
